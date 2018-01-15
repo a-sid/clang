@@ -77,6 +77,7 @@ add_clang_library(clangStaticAnalyzerCheckers
   PthreadLockChecker.cpp
   RetainCountChecker/RetainCountChecker.cpp
   RetainCountChecker/RetainCountDiagnostics.cpp
+  PthreadLockCheckerV2.cpp
   ReturnPointerRangeChecker.cpp
   ReturnUndefChecker.cpp
   RunLoopAutoreleaseLeakChecker.cpp
