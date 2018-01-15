@@ -502,6 +502,10 @@ def PthreadLockChecker : Checker<"PthreadLock">,
   HelpText<"Simple lock -> unlock checker">,
   DescFile<"PthreadLockChecker.cpp">;
 
+def PthreadLockCheckerV2 : Checker<"PthreadLockV2">,
+  HelpText<"Matcher-based prototype of lock -> unlock checker">,
+  DescFile<"PthreadLockCheckerV2.cpp">;
+
 def StreamChecker : Checker<"Stream">,
   HelpText<"Check stream handling functions">,
   DescFile<"StreamChecker.cpp">;
