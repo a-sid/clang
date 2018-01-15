@@ -28,6 +28,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/GraphTraits.h"
@@ -230,6 +231,11 @@ public:
     return const_cast<ExplodedNode*>(this)->pred_end();
   }
 
+  llvm::iterator_range<pred_iterator> predecessors() { return Preds; }
+  llvm::iterator_range<const_pred_iterator> predecessors() const {
+    return Preds;
+  }
+
   succ_iterator succ_begin() { return Succs.begin(); }
   succ_iterator succ_end() { return Succs.end(); }
 
@@ -239,6 +245,9 @@ public:
   const_succ_iterator succ_end() const {
     return const_cast<ExplodedNode*>(this)->succ_end();
   }
+
+  llvm::iterator_range<succ_iterator> successors() { return Succs; }
+  llvm::iterator_range<const_succ_iterator> successors() const { return Succs; }
 
   // For debugging.
 
@@ -355,6 +364,9 @@ public:
   using node_iterator = AllNodesTy::iterator;
   using const_node_iterator = AllNodesTy::const_iterator;
 
+  llvm::iterator_range<node_iterator> nodes() { return Nodes; }
+  llvm::iterator_range<const_node_iterator> nodes() const { return Nodes; }
+
   node_iterator nodes_begin() { return Nodes.begin(); }
 
   node_iterator nodes_end() { return Nodes.end(); }
@@ -362,6 +374,9 @@ public:
   const_node_iterator nodes_begin() const { return Nodes.begin(); }
 
   const_node_iterator nodes_end() const { return Nodes.end(); }
+
+  llvm::iterator_range<roots_iterator> roots() { return Roots; }
+  llvm::iterator_range<const_roots_iterator> roots() const { return Roots; }
 
   roots_iterator roots_begin() { return Roots.begin(); }
 
