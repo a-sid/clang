@@ -184,6 +184,10 @@ def TestAfterDivZeroChecker : Checker<"TestAfterDivZero">,
   HelpText<"Check for division by variable that is later compared against 0. Either the comparison is useless or there is division by zero.">,
   DescFile<"TestAfterDivZeroChecker.cpp">;
 
+def TestAfterDivZeroCheckerV2 : Checker<"TestAfterDivZeroV2">,
+  HelpText<"Matcher-based check for division by variable that is later compared against 0. Either the comparison is useless or there is division by zero.">,
+  DescFile<"TestAfterDivZeroCheckerV2.cpp">;
+
 def DynamicTypeChecker : Checker<"DynamicTypeChecker">,
   HelpText<"Check for cases where the dynamic and the static type of an object are unrelated.">,
   DescFile<"DynamicTypeChecker.cpp">;
@@ -480,6 +484,10 @@ let ParentPackage = UnixAlpha in {
 def ChrootChecker : Checker<"Chroot">,
   HelpText<"Check improper use of chroot">,
   DescFile<"ChrootChecker.cpp">;
+
+def ChrootCheckerV2 : Checker<"ChrootV2">,
+  HelpText<"Matcher-based prototype of checker for improper use of chroot">,
+  DescFile<"ChrootCheckerV2.cpp">;
 
 def PthreadLockChecker : Checker<"PthreadLock">,
   HelpText<"Simple lock -> unlock checker">,

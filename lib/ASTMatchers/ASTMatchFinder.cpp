@@ -58,7 +58,7 @@ static const unsigned MaxMemoizationEntries = 10000;
 // provides enough benefit for the additional amount of code.
 struct MatchKey {
   DynTypedMatcher::MatcherIDType MatcherID;
-  ast_type_traits::DynTypedNode Node;
+  ento::ast_graph_type_traits::DynTypedNode Node;
   BoundNodesTreeBuilder BoundNodes;
 
   bool operator<(const MatchKey &Other) const {
@@ -110,7 +110,7 @@ public:
   //     Traverse*(c) for each child c of 'node'.
   //   - Traverse*(c) in turn calls Traverse(c), completing the
   //     recursion.
-  bool findMatch(const ast_type_traits::DynTypedNode &DynNode) {
+  bool findMatch(const ento::ast_graph_type_traits::DynTypedNode &DynNode) {
     reset();
     if (const Decl *D = DynNode.get<Decl>())
       traverse(*D);
@@ -265,7 +265,7 @@ private:
     }
     if (Bind != ASTMatchFinder::BK_All) {
       BoundNodesTreeBuilder RecursiveBuilder(*Builder);
-      if (Matcher->matches(ast_type_traits::DynTypedNode::create(Node), Finder,
+      if (Matcher->matches(ento::ast_graph_type_traits::DynTypedNode::create(Node), Finder,
                            &RecursiveBuilder)) {
         Matches = true;
         ResultBindings.addMatch(RecursiveBuilder);
@@ -273,7 +273,7 @@ private:
       }
     } else {
       BoundNodesTreeBuilder RecursiveBuilder(*Builder);
-      if (Matcher->matches(ast_type_traits::DynTypedNode::create(Node), Finder,
+      if (Matcher->matches(ento::ast_graph_type_traits::DynTypedNode::create(Node), Finder,
                            &RecursiveBuilder)) {
         // After the first match the matcher succeeds.
         Matches = true;
@@ -311,8 +311,10 @@ class MatchASTVisitor : public RecursiveASTVisitor<MatchASTVisitor>,
                         public ASTMatchFinder {
 public:
   MatchASTVisitor(const MatchFinder::MatchersByType *Matchers,
-                  const MatchFinder::MatchFinderOptions &Options)
-      : Matchers(Matchers), Options(Options), ActiveASTContext(nullptr) {}
+                  const MatchFinder::MatchFinderOptions &Options,
+                  ASTMatchFinder::ContextMapTy &ContextMap)
+      : ASTMatchFinder(ContextMap), Matchers(Matchers), Options(Options),
+        ActiveASTContext(nullptr) {}
 
   ~MatchASTVisitor() override {
     if (Options.CheckProfiling) {
@@ -391,7 +393,7 @@ public:
   bool TraverseConstructorInitializer(CXXCtorInitializer *CtorInit);
 
   // Matches children or descendants of 'Node' with 'BaseMatcher'.
-  bool memoizedMatchesRecursively(const ast_type_traits::DynTypedNode &Node,
+  bool memoizedMatchesRecursively(const ento::ast_graph_type_traits::DynTypedNode &Node,
                                   const DynTypedMatcher &Matcher,
                                   BoundNodesTreeBuilder *Builder, int MaxDepth,
                                   TraversalKind Traversal, BindKind Bind) {
@@ -425,7 +427,7 @@ public:
   }
 
   // Matches children or descendants of 'Node' with 'BaseMatcher'.
-  bool matchesRecursively(const ast_type_traits::DynTypedNode &Node,
+  bool matchesRecursively(const ento::ast_graph_type_traits::DynTypedNode &Node,
                           const DynTypedMatcher &Matcher,
                           BoundNodesTreeBuilder *Builder, int MaxDepth,
                           TraversalKind Traversal, BindKind Bind) {
@@ -439,7 +441,7 @@ public:
                           BoundNodesTreeBuilder *Builder) override;
 
   // Implements ASTMatchFinder::matchesChildOf.
-  bool matchesChildOf(const ast_type_traits::DynTypedNode &Node,
+  bool matchesChildOf(const ento::ast_graph_type_traits::DynTypedNode &Node,
                       const DynTypedMatcher &Matcher,
                       BoundNodesTreeBuilder *Builder,
                       TraversalKind Traversal,
@@ -450,7 +452,7 @@ public:
                                       Bind);
   }
   // Implements ASTMatchFinder::matchesDescendantOf.
-  bool matchesDescendantOf(const ast_type_traits::DynTypedNode &Node,
+  bool matchesDescendantOf(const ento::ast_graph_type_traits::DynTypedNode &Node,
                            const DynTypedMatcher &Matcher,
                            BoundNodesTreeBuilder *Builder,
                            BindKind Bind) override {
@@ -460,7 +462,7 @@ public:
                                       TK_AsIs, Bind);
   }
   // Implements ASTMatchFinder::matchesAncestorOf.
-  bool matchesAncestorOf(const ast_type_traits::DynTypedNode &Node,
+  bool matchesAncestorOf(const ento::ast_graph_type_traits::DynTypedNode &Node,
                          const DynTypedMatcher &Matcher,
                          BoundNodesTreeBuilder *Builder,
                          AncestorMatchMode MatchMode) override {
@@ -474,7 +476,7 @@ public:
 
   // Matches all registered matchers on the given node and calls the
   // result callback for every node that matches.
-  void match(const ast_type_traits::DynTypedNode &Node) {
+  void match(const ento::ast_graph_type_traits::DynTypedNode &Node) {
     // FIXME: Improve this with a switch or a visitor pattern.
     if (auto *N = Node.get<Decl>()) {
       match(*N);
@@ -491,6 +493,16 @@ public:
     } else if (auto *N = Node.get<TypeLoc>()) {
       match(*N);
     } else if (auto *N = Node.get<CXXCtorInitializer>()) {
+      match(*N);
+    } else if (auto *N = Node.get<ento::ExplodedNode>()) {
+      match(*N);
+    } else if (auto *N = Node.get<ento::ProgramState>()) {
+      match(*N);
+    } else if (auto *N = Node.get<ento::SVal>()) {
+      match(*N);
+    } else if (auto *N = Node.get<ento::SymExpr>()) {
+      match(*N);
+    } else if (auto *N = Node.get<ento::MemRegion>()) {
       match(*N);
     }
   }
@@ -552,7 +564,8 @@ private:
     }
   }
 
-  void matchWithFilter(const ast_type_traits::DynTypedNode &DynNode) {
+  void matchWithFilter(
+      const ento::ast_graph_type_traits::DynTypedNode &DynNode) {
     auto Kind = DynNode.getNodeKind();
     auto it = MatcherFiltersMap.find(Kind);
     const auto &Filter =
@@ -577,7 +590,7 @@ private:
   }
 
   const std::vector<unsigned short> &
-  getFilterForKind(ast_type_traits::ASTNodeKind Kind) {
+  getFilterForKind(ento::ast_graph_type_traits::ASTGraphNodeKind Kind) {
     auto &Filter = MatcherFiltersMap[Kind];
     auto &Matchers = this->Matchers->DeclOrStmt;
     assert((Matchers.size() < USHRT_MAX) && "Too many matchers.");
@@ -592,10 +605,10 @@ private:
   /// @{
   /// Overloads to pair the different node types to their matchers.
   void matchDispatch(const Decl *Node) {
-    return matchWithFilter(ast_type_traits::DynTypedNode::create(*Node));
+    return matchWithFilter(ento::ast_graph_type_traits::DynTypedNode::create(*Node));
   }
   void matchDispatch(const Stmt *Node) {
-    return matchWithFilter(ast_type_traits::DynTypedNode::create(*Node));
+    return matchWithFilter(ento::ast_graph_type_traits::DynTypedNode::create(*Node));
   }
 
   void matchDispatch(const Type *Node) {
@@ -616,6 +629,9 @@ private:
   void matchDispatch(const CXXCtorInitializer *Node) {
     matchWithoutFilter(*Node, Matchers->CtorInit);
   }
+  void matchDispatch(const ento::ExplodedNode *Node) {
+    matchWithoutFilter(*Node, Matchers->ExplodedNode);
+  }
   void matchDispatch(const void *) { /* Do nothing. */ }
   /// @}
 
@@ -633,7 +649,7 @@ private:
   // allow simple memoization on the ancestors. Thus, we only memoize as long
   // as there is a single parent.
   bool memoizedMatchesAncestorOfRecursively(
-      const ast_type_traits::DynTypedNode &Node, const DynTypedMatcher &Matcher,
+      const ento::ast_graph_type_traits::DynTypedNode &Node, const DynTypedMatcher &Matcher,
       BoundNodesTreeBuilder *Builder, AncestorMatchMode MatchMode) {
     if (Node.get<TranslationUnitDecl>() ==
         ActiveASTContext->getTranslationUnitDecl())
@@ -668,15 +684,17 @@ private:
     return CachedResult.ResultOfMatch;
   }
 
-  bool matchesAncestorOfRecursively(const ast_type_traits::DynTypedNode &Node,
+  bool matchesAncestorOfRecursively(const ento::ast_graph_type_traits::DynTypedNode &Node,
                                     const DynTypedMatcher &Matcher,
                                     BoundNodesTreeBuilder *Builder,
                                     AncestorMatchMode MatchMode) {
-    const auto &Parents = ActiveASTContext->getParents(Node);
+    const auto &Parents =
+        ActiveASTContext->getParents(Node.getAsASTTypeTrait());
     assert(!Parents.empty() && "Found node that is not in the parent map.");
     if (Parents.size() == 1) {
       // Only one parent - do recursive memoization.
-      const ast_type_traits::DynTypedNode Parent = Parents[0];
+      const ento::ast_graph_type_traits::DynTypedNode Parent =
+          ento::ast_graph_type_traits::DynTypedNode::create(Parents[0]);
       BoundNodesTreeBuilder BuilderCopy = *Builder;
       if (Matcher.matches(Parent, this, &BuilderCopy)) {
         *Builder = std::move(BuilderCopy);
@@ -695,7 +713,7 @@ private:
                                                       Parents.end());
       while (!Queue.empty()) {
         BoundNodesTreeBuilder BuilderCopy = *Builder;
-        if (Matcher.matches(Queue.front(), this, &BuilderCopy)) {
+        if (Matcher.matches(ento::ast_graph_type_traits::DynTypedNode::create(Queue.front()), this, &BuilderCopy)) {
           *Builder = std::move(BuilderCopy);
           return true;
         }
@@ -767,7 +785,8 @@ private:
   /// We precalculate a list of matchers that pass the toplevel restrict check.
   /// This also allows us to skip the restrict check at matching time. See
   /// use \c matchesNoKindCheck() above.
-  llvm::DenseMap<ast_type_traits::ASTNodeKind, std::vector<unsigned short>>
+  llvm::DenseMap<ento::ast_graph_type_traits::ASTGraphNodeKind,
+                 std::vector<unsigned short>>
       MatcherFiltersMap;
 
   const MatchFinder::MatchFinderOptions &Options;
@@ -779,6 +798,8 @@ private:
   // Maps (matcher, node) -> the match result for memoization.
   typedef std::map<MatchKey, MemoizedMatchResult> MemoizationMap;
   MemoizationMap ResultCache;
+
+  ASTMatchFinder::ContextMapTy *ContextMap;
 };
 
 static CXXRecordDecl *
@@ -977,6 +998,12 @@ void MatchFinder::addMatcher(const CXXCtorInitializerMatcher &NodeMatch,
   Matchers.AllCallbacks.insert(Action);
 }
 
+void MatchFinder::addMatcher(const ExplodedNodeMatcher &NodeMatch,
+                             MatchCallback *Action) {
+  Matchers.ExplodedNode.emplace_back(NodeMatch, Action);
+  Matchers.AllCallbacks.insert(Action);
+}
+
 bool MatchFinder::addDynamicMatcher(const internal::DynTypedMatcher &NodeMatch,
                                     MatchCallback *Action) {
   if (NodeMatch.canConvertTo<Decl>()) {
@@ -1000,7 +1027,12 @@ bool MatchFinder::addDynamicMatcher(const internal::DynTypedMatcher &NodeMatch,
   } else if (NodeMatch.canConvertTo<CXXCtorInitializer>()) {
     addMatcher(NodeMatch.convertTo<CXXCtorInitializer>(), Action);
     return true;
-  }
+  } else if (NodeMatch.canConvertTo<ento::ExplodedNode>()) {
+      addMatcher(NodeMatch.convertTo<ento::ExplodedNode>(), Action);
+      return true;
+  }/* else if (NodeMatch.canConvertTo<ento::SVal>()) {
+    addMatcher(NodeMatch.convertTo<ento::SVal>(), Action);
+  }*/
   return false;
 }
 
@@ -1008,15 +1040,15 @@ std::unique_ptr<ASTConsumer> MatchFinder::newASTConsumer() {
   return llvm::make_unique<internal::MatchASTConsumer>(this, ParsingDone);
 }
 
-void MatchFinder::match(const clang::ast_type_traits::DynTypedNode &Node,
+void MatchFinder::match(const clang::ento::ast_graph_type_traits::DynTypedNode &Node,
                         ASTContext &Context) {
-  internal::MatchASTVisitor Visitor(&Matchers, Options);
+  internal::MatchASTVisitor Visitor(&Matchers, Options, ContextMap);
   Visitor.set_active_ast_context(&Context);
   Visitor.match(Node);
 }
 
 void MatchFinder::matchAST(ASTContext &Context) {
-  internal::MatchASTVisitor Visitor(&Matchers, Options);
+  internal::MatchASTVisitor Visitor(&Matchers, Options, ContextMap);
   Visitor.set_active_ast_context(&Context);
   Visitor.onStartOfTranslationUnit();
   Visitor.TraverseDecl(Context.getTranslationUnitDecl());

@@ -201,9 +201,7 @@ public:
   void runCheckersForPreStmt(ExplodedNodeSet &Dst,
                              const ExplodedNodeSet &Src,
                              const Stmt *S,
-                             ExprEngine &Eng) {
-    runCheckersForStmt(/*isPreVisit=*/true, Dst, Src, S, Eng);
-  }
+                             ExprEngine &Eng);
 
   /// Run checkers for post-visiting Stmts.
   ///

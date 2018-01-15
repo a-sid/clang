@@ -160,6 +160,8 @@ public:
                   MatchCallback *Action);
   void addMatcher(const CXXCtorInitializerMatcher &NodeMatch,
                   MatchCallback *Action);
+  void addMatcher(const ExplodedNodeMatcher &NodeMatch, MatchCallback *Action);
+
   /// @}
 
   /// Adds a matcher to execute when running over the AST.
@@ -183,14 +185,18 @@ public:
   ///
   /// @{
   template <typename T> void match(const T &Node, ASTContext &Context) {
-    match(clang::ast_type_traits::DynTypedNode::create(Node), Context);
+    match(clang::ento::ast_graph_type_traits::DynTypedNode::create(Node), Context);
   }
-  void match(const clang::ast_type_traits::DynTypedNode &Node,
+  void match(const clang::ento::ast_graph_type_traits::DynTypedNode &Node,
              ASTContext &Context);
   /// @}
 
   /// Finds all matches in the given AST.
   void matchAST(ASTContext &Context);
+
+  template <typename ContextTy> void addContext(ContextTy *Context) {
+    ContextMap[ContextTy::getTag()] = Context;
+  }
 
   /// Registers a callback to notify the end of parsing.
   ///
@@ -211,6 +217,7 @@ public:
         NestedNameSpecifierLoc;
     std::vector<std::pair<TypeLocMatcher, MatchCallback *>> TypeLoc;
     std::vector<std::pair<CXXCtorInitializerMatcher, MatchCallback *>> CtorInit;
+    std::vector<std::pair<ExplodedNodeMatcher, MatchCallback *>> ExplodedNode;
     /// All the callbacks in one container to simplify iteration.
     llvm::SmallPtrSet<MatchCallback *, 16> AllCallbacks;
   };
@@ -222,6 +229,8 @@ private:
 
   /// Called when parsing is done.
   ParsingDoneTestCallback *ParsingDone;
+
+  internal::ASTMatchFinder::ContextMapTy ContextMap;
 };
 
 /// Returns the results of matching \p Matcher on \p Node.
@@ -244,7 +253,7 @@ match(MatcherT Matcher, const NodeT &Node, ASTContext &Context);
 
 template <typename MatcherT>
 SmallVector<BoundNodes, 1>
-match(MatcherT Matcher, const ast_type_traits::DynTypedNode &Node,
+match(MatcherT Matcher, const ento::ast_graph_type_traits::DynTypedNode &Node,
       ASTContext &Context);
 /// @}
 
@@ -278,14 +287,16 @@ class CollectMatchesCallback : public MatchFinder::MatchCallback {
 public:
   void run(const MatchFinder::MatchResult &Result) override {
     Nodes.push_back(Result.Nodes);
+    HasMatches = true;
   }
   SmallVector<BoundNodes, 1> Nodes;
+  bool HasMatches = false;
 };
 }
 
 template <typename MatcherT>
 SmallVector<BoundNodes, 1>
-match(MatcherT Matcher, const ast_type_traits::DynTypedNode &Node,
+match(MatcherT Matcher, const ento::ast_graph_type_traits::DynTypedNode &Node,
       ASTContext &Context) {
   internal::CollectMatchesCallback Callback;
   MatchFinder Finder;
@@ -297,7 +308,7 @@ match(MatcherT Matcher, const ast_type_traits::DynTypedNode &Node,
 template <typename MatcherT, typename NodeT>
 SmallVector<BoundNodes, 1>
 match(MatcherT Matcher, const NodeT &Node, ASTContext &Context) {
-  return match(Matcher, ast_type_traits::DynTypedNode::create(Node), Context);
+  return match(Matcher, ento::ast_graph_type_traits::DynTypedNode::create(Node), Context);
 }
 
 template <typename MatcherT>

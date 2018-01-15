@@ -74,6 +74,8 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/TypeTraits.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
+#include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -149,6 +151,7 @@ using TypeLocMatcher = internal::Matcher<TypeLoc>;
 using NestedNameSpecifierMatcher = internal::Matcher<NestedNameSpecifier>;
 using NestedNameSpecifierLocMatcher = internal::Matcher<NestedNameSpecifierLoc>;
 using CXXCtorInitializerMatcher = internal::Matcher<CXXCtorInitializer>;
+using ExplodedNodeMatcher = internal::Matcher<ento::ExplodedNode>;
 /// @}
 
 /// Matches any node.
@@ -3848,8 +3851,10 @@ AST_MATCHER_P(IfStmt, hasElse, internal::Matcher<Stmt>, InnerMatcher) {
 /// will trigger a match for each combination of variable declaration
 /// and reference to that variable declaration within a compound statement.
 AST_POLYMORPHIC_MATCHER_P(equalsBoundNode,
-                          AST_POLYMORPHIC_SUPPORTED_TYPES(Stmt, Decl, Type,
-                                                          QualType),
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(
+                              Stmt, Decl, Type, QualType, ento::SVal,
+                              ProgramPoint, ento::ExplodedNode, ento::SymExpr,
+                              ento::MemRegion, LocationContext),
                           std::string, ID) {
   // FIXME: Figure out whether it makes sense to allow this
   // on any other node types.
@@ -3859,8 +3864,16 @@ AST_POLYMORPHIC_MATCHER_P(equalsBoundNode,
   // they're ever reused.
   internal::NotEqualsBoundNodePredicate Predicate;
   Predicate.ID = ID;
-  Predicate.Node = ast_type_traits::DynTypedNode::create(Node);
-  return Builder->removeBindings(Predicate);
+  Predicate.Node = ento::ast_graph_type_traits::DynTypedNode::create(Node);
+  if (Builder->removeBindings(Predicate))
+    return true;
+
+  // Graph matchers maintain their own node maps. Query them.
+  for (auto &MContext : Finder->contexts())
+    if (MContext.second->getBoundNode(ID) == Predicate.Node)
+      return true;
+
+  return false;
 }
 
 /// Matches the condition variable statement in an if statement.

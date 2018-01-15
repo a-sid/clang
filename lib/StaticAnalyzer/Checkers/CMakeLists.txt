@@ -23,6 +23,7 @@ add_clang_library(clangStaticAnalyzerCheckers
   CheckSizeofPointer.cpp
   CheckerDocumentation.cpp
   ChrootChecker.cpp
+  ChrootCheckerV2.cpp
   ClangCheckers.cpp
   CloneChecker.cpp
   ConversionChecker.cpp
@@ -84,6 +85,7 @@ add_clang_library(clangStaticAnalyzerCheckers
   StreamChecker.cpp
   TaintTesterChecker.cpp
   TestAfterDivZeroChecker.cpp
+  TestAfterDivZeroCheckerV2.cpp
   TraversalChecker.cpp
   TrustNonnullChecker.cpp
   UndefBranchChecker.cpp
@@ -108,4 +110,5 @@ add_clang_library(clangStaticAnalyzerCheckers
   clangBasic
   clangLex
   clangStaticAnalyzerCore
+  clangStaticAnalyzerMatchers
   )

@@ -47,7 +47,7 @@ TEST(ConstructVariadic, MismatchedTypes_Regression) {
       matches("const int a = 0;",
               internal::DynTypedMatcher::constructVariadic(
                   internal::DynTypedMatcher::VO_AnyOf,
-                  ast_type_traits::ASTNodeKind::getFromNodeKind<QualType>(),
+                  ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<QualType>(),
                   {isConstQualified(), arrayType()})
                   .convertTo<QualType>()));
 }

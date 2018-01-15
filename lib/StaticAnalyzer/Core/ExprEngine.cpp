@@ -3111,7 +3111,7 @@ struct DOTGraphTraits<ExplodedNode*> : public DefaultDOTGraphTraits {
         Out << "PreStmtPurgeDeadSymbols";
         break;
 
-      case ProgramPoint::EpsilonKind:
+      case ProgramPoint::EpsilonPointKind:
         Out << "Epsilon Point";
         break;
 
@@ -3236,6 +3236,10 @@ struct DOTGraphTraits<ExplodedNode*> : public DefaultDOTGraphTraits {
           Out << "\\lPostLValue\\l";
         else if (Loc.getAs<PostAllocatorCall>())
           Out << "\\lPostAllocatorCall\\l";
+        else if (Loc.getAs<PostCondition>())
+          Out << "\\lPostCondition\\l";
+        else if (Loc.getAs<PostStmt>())
+          Out << "\\lPostStmt\\l";
 
         break;
       }
