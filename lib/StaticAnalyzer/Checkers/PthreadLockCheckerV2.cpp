@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ClangSACheckers.h"
+#include "clang/ASTMatchers/ASTGraphTypeTraits.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
@@ -70,65 +71,17 @@ public:
   void Profile(llvm::FoldingSetNodeID &ID) const { ID.AddInteger(K); }
 };
 
-using namespace ast_type_traits;
+////////////////////////////////////////////////////////////////////////////////
 
-class ASTGraphNode {
-  enum NodeKindId { NKI_ASTType, NKI_ExplodedNode, NKI_SVal };
-
-  AlignedCharArrayUnion<const ExplodedNode *, SVal, DynTypedNode> Storage;
-
-  template <typename T> T &castUnsafe() {
-    assert(is<T>());
-    return *reinterpret_cast<T *>(Storage.buffer);
-  }
-  template <typename T> void assignStorage(T Value) { castUnsafe<T>() = Value; }
-
-  NodeKindId Id;
-
-public:
-  ASTGraphNode(const ExplodedNode *N) : Id(NKI_ExplodedNode) {
-    assignStorage(N);
-  }
-  ASTGraphNode(SVal SV) : Id(NKI_SVal) { assignStorage(SV); }
-  ASTGraphNode(DynTypedNode N) : Id(NKI_ASTType) { assignStorage(N); }
-
-  template <typename T> bool is() const;
-};
-
-template <> bool ASTGraphNode::is<SVal>() const { return Id == NKI_SVal; }
-template <> bool ASTGraphNode::is<const ExplodedNode *>() const {
-  return Id == NKI_ExplodedNode;
-}
-template <> bool ASTGraphNode::is<DynTypedNode>() const {
-  return Id == NKI_ASTType;
-}
-template <typename T> bool ASTGraphNode::is() const { return false; }
+using namespace ento::ast_graph_type_traits;
 
 class GraphMatchFinder;
 class GraphBoundNodeMap;
 class GraphBoundNodesTreeBuilder {};
-/*
-class DynGraphNodeMatcherInterface {
-  virtual ~GraphNodeMatcherInterface() = default;
-  virtual bool dynMatches(const ASTGraphNode &Node, GraphMatchFinder *Finder,
-                          GraphBoundNodesTreeBuilder *Builder) = 0;
-};
 
-template <typename NodeTy>
-class GraphNodeMatcherInterface<NodeTy> : public DynGraphNodeMatcherInterface {
-  virtual bool matches(const NodeTy &Node, GraphMatchFinder *Finder,
-                       GraphBoundNodesTreeBuilder *Builder) = 0;
-  virtual bool dynMatches(const ASTGraphNode &Node, GraphMatchFinder *Finder,
-                          GraphBoundNodesTreeBuilder *Builder) {
-    return matches(Node.castUnsafe<NodeTy>(), Finder, Builder);
-  }
-};
-*/
-
-
-class GraphBoundNodeMap : public StringMap<ASTGraphNode> {
+class GraphBoundNodeMap : public StringMap<DynTypedNode> {
 public:
-  using BoundRecordType = StringMap<ASTGraphNode>;
+  using BoundRecordType = StringMap<DynTypedNode>;
   using iterator = BoundRecordType::iterator;
   using const_iterator = BoundRecordType::const_iterator;
   /*
@@ -144,7 +97,58 @@ private:
   DenseMap<const ExplodedNode *, BoundRecordType> Bounds;
 };
 
-/*
+typedef size_t MatcherStateID;
+const MatcherStateID StateInvalid = std::numeric_limits<MatcherStateID>::max();
+
+enum class MatchAction { Accept, Advance, RejectSingle, RejectForever, Pass };
+
+struct MatchResult {
+  MatchAction Action;
+  MatcherStateID NewStateID;
+};
+
+/// \brief Generic interface for all matchers.
+///
+/// Used by the implementation of Matcher<T> and DynTypedMatcher.
+/// In general, implement MatcherInterface<T> or SingleNodeMatcherInterface<T>
+/// instead.
+class DynPathMatcherInterface
+    : public llvm::ThreadSafeRefCountedBase<DynPathMatcherInterface> {
+public:
+  virtual ~DynPathMatcherInterface() = default;
+
+  /// \brief Returns true if \p DynNode can be matched.
+  ///
+  /// May bind \p DynNode to an ID via \p Builder, or recurse into
+  /// the AST via \p Finder.
+  virtual MatchResult
+  dynMatches(const ento::ast_graph_type_traits::DynTypedNode &DynGraph,
+             GraphMatchFinder *Finder, GraphBoundNodesTreeBuilder *Builder,
+             MatcherStateID StateID) const = 0;
+};
+
+template <typename T>
+class PathMatcherInterface : public DynPathMatcherInterface {
+public:
+  /// \brief Returns true if 'Node' can be matched.
+  ///
+  /// May bind 'Node' to an ID via 'Builder', or recurse into
+  /// the AST via 'Finder'.
+  virtual bool matches(const T &GraphNode, GraphMatchFinder *Finder,
+                       GraphBoundNodesTreeBuilder *Builder,
+                       MatcherStateID StateID) const = 0;
+
+  MatchResult
+  dynMatches(const ento::ast_graph_type_traits::DynTypedNode &GraphNode,
+             GraphMatchFinder *Finder, GraphBoundNodesTreeBuilder *Builder,
+             MatcherStateID StateID) const override {
+    return matches(GraphNode.getUnchecked<T>(), Finder, Builder, StateID);
+  }
+};
+
+// Can be specialized for CFG or ExplodedGraph.
+template <typename> class PathMatcher;
+
 /// \brief Matcher that works on a \c DynTypedNode.
 ///
 /// It is constructed from a \c Matcher<T> object and redirects most calls to
@@ -152,153 +156,95 @@ private:
 /// It checks whether the \c DynTypedNode is convertible into the type of the
 /// underlying matcher and then do the actual match on the actual node, or
 /// return false if it is not convertible.
-class GraphDynTypedMatcher {
+class DynTypedPathMatcher {
 public:
   /// \brief Takes ownership of the provided implementation pointer.
   template <typename T>
-  GraphDynTypedMatcher(GraphNodeMatcherInterface<T> *Implementation)
-      : SupportedKind(ASTGraphNode::NodeKindId::getFromNodeKind<T>()),
-        RestrictKind(SupportedKind), Implementation(Implementation) {}
+  DynTypedPathMatcher(PathMatcherInterface<T> *Implementation)
+      : Implementation(Implementation) {}
 
-  /// \brief Construct from a variadic function.
-  enum VariadicOperator {
-    /// \brief Matches nodes for which all provided matchers match.
-    VO_AllOf,
-
-    /// \brief Matches nodes for which at least one of the provided matchers
-    /// matches.
-    VO_AnyOf,
-
-    /// \brief Matches nodes for which at least one of the provided matchers
-    /// matches, but doesn't stop at the first match.
-    VO_EachOf,
-
-    /// \brief Matches nodes that do not match the provided matcher.
-    ///
-    /// Uses the variadic matcher interface, but fails if
-    /// InnerMatchers.size() != 1.
-    VO_UnaryNot
-  };
-
-  static DynTypedMatcher
-  constructVariadic(VariadicOperator Op,
-                    ast_type_traits::ASTNodeKind SupportedKind,
-                    std::vector<DynTypedMatcher> InnerMatchers);
-
-  /// \brief Get a "true" matcher for \p NodeKind.
-  ///
-  /// It only checks that the node is of the right kind.
-  static DynTypedMatcher trueMatcher(ast_type_traits::ASTNodeKind NodeKind);
+  DynTypedPathMatcher(
+      IntrusiveRefCntPtr<DynPathMatcherInterface> Implementation)
+      : Implementation(std::move(Implementation)) {}
 
   void setAllowBind(bool AB) { AllowBind = AB; }
 
-  /// \brief Check whether this matcher could ever match a node of kind \p Kind.
-  /// \return \c false if this matcher will never match such a node. Otherwise,
-  /// return \c true.
-  bool canMatchNodesOfKind(ast_type_traits::ASTNodeKind Kind) const;
-
-  /// \brief Return a matcher that points to the same implementation, but
-  ///   restricts the node types for \p Kind.
-  DynTypedMatcher dynCastTo(const ast_type_traits::ASTNodeKind Kind) const;
-
   /// \brief Returns true if the matcher matches the given \c DynNode.
-  bool matches(const ast_type_traits::DynTypedNode &DynNode,
-               ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder) const;
-
-  /// \brief Same as matches(), but skips the kind check.
-  ///
-  /// It is faster, but the caller must ensure the node is valid for the
-  /// kind of this matcher.
-  bool matchesNoKindCheck(const ast_type_traits::DynTypedNode &DynNode,
-                          ASTMatchFinder *Finder,
-                          BoundNodesTreeBuilder *Builder) const;
+  MatchResult matches(const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+                      GraphMatchFinder *Finder,
+                      GraphBoundNodesTreeBuilder *Builder,
+                      MatcherStateID StateID) const;
 
   /// \brief Bind the specified \p ID to the matcher.
   /// \return A new matcher with the \p ID bound to it if this matcher supports
   ///   binding. Otherwise, returns an empty \c Optional<>.
   llvm::Optional<DynTypedMatcher> tryBind(StringRef ID) const;
 
-  /// \brief Returns a unique \p ID for the matcher.
+private:
+  bool AllowBind = false;
+  IntrusiveRefCntPtr<DynPathMatcherInterface> Implementation;
+};
+
+MatchResult DynTypedPathMatcher::matches(const DynTypedNode &DynNode,
+                                         GraphMatchFinder *Finder,
+                                         GraphBoundNodesTreeBuilder *Builder,
+                                         MatcherStateID StateID) const {
+  return Implementation->dynMatches(DynNode, Finder, Builder, StateID);
+  // if (Implementation->dynMatches(DynNode, Finder, Builder, StateID))
+  //  return true;
+
+  // Delete all bindings when a matcher does not match.
+  // This prevents unexpected exposure of bound nodes in unmatches
+  // branches of the match tree.
+  // FIXME!!!
+  //  Builder->removeBindings([](const BoundNodesMap &) { return true; });
+  // return false;
+}
+/// \brief Wrapper of a MatcherInterface<T> *that allows copying.
+///
+/// A Matcher<Base> can be used anywhere a Matcher<Derived> is
+/// required. This establishes an is-a relationship which is reverse
+/// to the AST hierarchy. In other words, Matcher<T> is contravariant
+/// with respect to T. The relationship is built via a type conversion
+/// operator rather than a type hierarchy to be able to templatize the
+/// type hierarchy instead of spelling it out.
+template <typename T> class PathMatcher {
+public:
+  /// \brief Takes ownership of the provided implementation pointer.
+  explicit PathMatcher(PathMatcherInterface<T> *Implementation)
+      : Implementation(Implementation) {}
+
+  explicit PathMatcher(const DynTypedPathMatcher &Implementation)
+      : Implementation(Implementation) {}
+
+  /// \brief Implicitly converts \c Other to a Matcher<T>.
   ///
-  /// Casting a Matcher<T> to Matcher<U> creates a matcher that has the
-  /// same \c Implementation pointer, but different \c RestrictKind. We need to
-  /// include both in the ID to make it unique.
-  ///
-  /// \c MatcherIDType supports operator< and provides strict weak ordering.
-  using MatcherIDType = std::pair<ast_type_traits::ASTNodeKind, uint64_t>;
-  MatcherIDType getID() const {
-    /// FIXME: Document the requirements this imposes on matcher
-    /// implementations (no new() implementation_ during a Matches()).
-    return std::make_pair(RestrictKind,
-                          reinterpret_cast<uint64_t>(Implementation.get()));
+  /// Requires \c T to be derived from \c From.
+  PathMatcher(const PathMatcher<T> &Other)
+      : Implementation(Other.Implementation) {}
+
+  /// \brief Forwards the call to the underlying MatcherInterface<T> pointer.
+  MatchResult matches(const T &GraphNode, GraphMatchFinder *Finder,
+                      GraphBoundNodesTreeBuilder *Builder,
+                      MatcherStateID StateID) const {
+    return Implementation.matches(
+        ento::ast_graph_type_traits::DynTypedNode::create(GraphNode), Finder,
+        Builder, StateID);
   }
 
-  /// \brief Returns the type this matcher works on.
+  /// \brief Extract the dynamic matcher.
   ///
-  /// \c matches() will always return false unless the node passed is of this
-  /// or a derived type.
-  ast_type_traits::ASTNodeKind getSupportedKind() const {
-    return SupportedKind;
-  }
-
-  /// \brief Returns \c true if the passed \c DynTypedMatcher can be converted
-  ///   to a \c Matcher<T>.
-  ///
-  /// This method verifies that the underlying matcher in \c Other can process
-  /// nodes of types T.
-  template <typename T> bool canConvertTo() const {
-    return canConvertTo(ast_type_traits::ASTNodeKind::getFromNodeKind<T>());
-  }
-  bool canConvertTo(ast_type_traits::ASTNodeKind To) const;
-
-  /// \brief Construct a \c Matcher<T> interface around the dynamic matcher.
-  ///
-  /// This method asserts that \c canConvertTo() is \c true. Callers
-  /// should call \c canConvertTo() first to make sure that \c this is
-  /// compatible with T.
-  template <typename T> Matcher<T> convertTo() const {
-    assert(canConvertTo<T>());
-    return unconditionalConvertTo<T>();
-  }
-
-  /// \brief Same as \c convertTo(), but does not check that the underlying
-  ///   matcher can handle a value of T.
-  ///
-  /// If it is not compatible, then this matcher will never match anything.
-  template <typename T> Matcher<T> unconditionalConvertTo() const;
+  /// The returned matcher keeps the same restrictions as \c this and remembers
+  /// that it is meant to support nodes of type \c T.
+  operator DynTypedPathMatcher() const { return Implementation; }
 
 private:
- DynTypedMatcher(ast_type_traits::ASTNodeKind SupportedKind,
-                 ast_type_traits::ASTNodeKind RestrictKind,
-                 IntrusiveRefCntPtr<DynMatcherInterface> Implementation)
-     : SupportedKind(SupportedKind), RestrictKind(RestrictKind),
-       Implementation(std::move(Implementation)) {}
+  // For DynTypedMatcher::unconditionalConvertTo<T>.
+  friend class DynTypedPathMatcher;
 
-  bool AllowBind = false;
-  ast_type_traits::ASTNodeKind SupportedKind;
-
-  /// \brief A potentially stricter node kind.
-  ///
-  /// It allows to perform implicit and dynamic cast of matchers without
-  /// needing to change \c Implementation.
-  ast_type_traits::ASTNodeKind RestrictKind;
-  IntrusiveRefCntPtr<DynMatcherInterface> Implementation;
-};
-
-/// \brief Wrapper base class for a wrapping matcher.
-///
-/// This is just a container for a DynTypedMatcher that can be used as a base
-/// class for another matcher.
-template <typename T>
-class WrapperMatcherInterface : public MatcherInterface<T> {
-protected:
-  explicit WrapperMatcherInterface(DynTypedMatcher &&InnerMatcher)
-      : InnerMatcher(std::move(InnerMatcher)) {}
-
-  const DynTypedMatcher InnerMatcher;
-};
-
-*/
+  DynTypedPathMatcher Implementation;
+}; // class PathMatcher
+/*
 class ExplodedNodeMatcher {
 public:
   virtual bool matches(const ExplodedNode *Node, GraphMatchFinder *Finder,
@@ -311,72 +257,38 @@ private:
 };
 
 class PathMatcher;
-
-enum class MatchAction { Accept, Advance, RejectSingle, RejectForever, Pass };
-
-class BindEntry {
+*/
+template <typename NodeTy> class BindEntry {
   GraphBoundNodeMap BoundItems;
-  unsigned StateID = 0;
+  MatcherStateID StateID = 0;
 
 public:
-  BindEntry(PathMatcher *Matcher, const GraphBoundNodeMap &Initial)
-      : BoundItems(Initial), Matcher(Matcher) {}
+  BindEntry(PathMatcher<NodeTy> *Matcher, const GraphBoundNodeMap &Initial,
+            MatcherStateID InitialID = 0)
+      : BoundItems(Initial), StateID(InitialID), Matcher(Matcher) {}
 
   unsigned getStateID() { return StateID; }
 
   void advance() { ++StateID; }
+  void advance(MatcherStateID NewStateID) { StateID = NewStateID; }
 
-  void setStateID(unsigned StateID) { this->StateID = StateID; }
+  void setStateID(MatcherStateID StateID) { this->StateID = StateID; }
 
-  BindEntry addBinding(StringRef Key, ASTGraphNode Binding) {
+  BindEntry addBinding(StringRef Key, DynTypedNode Binding) {
     BindEntry New = *this;
     New.BoundItems.insert(std::make_pair(Key, Binding));
     return New;
   }
 
-  MatchAction matchNewNode(const ExplodedNode *N, GraphMatchFinder *Finder,
+  MatchResult matchNewNode(const NodeTy &Node, GraphMatchFinder *Finder,
                            GraphBoundNodesTreeBuilder *Builder);
 
-  PathMatcher *Matcher;
+  PathMatcher<NodeTy> *Matcher;
 };
-
+/*
 class PathMatcher {
   using MatcherVector = std::vector<ExplodedNodeMatcher *>;
   MatcherVector InnerMatchers;
-
-  std::pair<size_t, bool>
-  matchNotMatchers(size_t StartIndex, const ExplodedNode *Node,
-                   GraphMatchFinder *Finder,
-                   GraphBoundNodesTreeBuilder *Builder) {
-    size_t I = StartIndex;
-    for (; I < InnerMatchers.size(); ++I) {
-      if (!InnerMatchers[I]->isNegative())
-        return {I, true};
-      if (!InnerMatchers[I]->matches(Node, Finder, Builder))
-        return {I, false};
-    }
-    return {I, true};
-  }
-
-  size_t skipNotMatchers(size_t Index) const {
-    while (Index < InnerMatchers.size() && InnerMatchers[Index]->isNegative())
-      ++Index;
-    assert(Index != InnerMatchers.size() &&
-           "Cannot skip terminating not matchers!");
-    return Index;
-  }
-
-  size_t matcherIndexByStateID(unsigned StateID) const {
-    size_t Index = 0, NumMatchers = InnerMatchers.size();
-    unsigned State = 0;
-    for (; State < StateID && Index < NumMatchers; ++State) {
-      Index = skipNotMatchers(Index);
-      ++Index;
-    }
-    assert(State == StateID && Index < NumMatchers &&
-           "Cannot find the matcher corresponding to State ID!");
-    return Index;
-  }
 
 public:
   PathMatcher(MatcherVector &&InnerMatchers) : InnerMatchers(InnerMatchers) {}
@@ -428,7 +340,7 @@ public:
     llvm_unreachable("The result should be already defined and returned!");
   }
 };
-
+*/
 class PSMatchesCallback : public MatchFinder::MatchCallback {
 public:
   void run(const MatchFinder::MatchResult &Result) override {
@@ -438,7 +350,7 @@ public:
   SmallVector<BoundNodes, 1> Nodes;
   bool HasMatches = false;
 };
-
+/*
 template <typename MatcherTy>
 class StatementNodeMatcher : public ExplodedNodeMatcher {
   MatcherTy InnerMatcher;
@@ -461,7 +373,118 @@ public:
   }
   virtual bool isNegative() const override { return true; }
 };
+*/
+using ExplodedNodeMatcher = Matcher<ExplodedNode>;
 
+VariadicAllOfMatcher<ExplodedNode> explodedNode;
+
+AST_MATCHER_P(ExplodedNode, statementNode, StatementMatcher, Inner) {
+  if (auto StmtPP = Node.getLocationAs<StmtPoint>())
+    return Inner.matches(*StmtPP->getStmt(), Finder, Builder);
+  return false;
+}
+/*
+#define PROGRAM_POINT_MATCHER(Type, Name)                                      \
+  AST_MATCHER_P(ExplodedNode, Name, ExplodedNodeMatcher, Inner) {              \
+    if (auto PP = Node.getLocationAs<Type>())                                  \
+      return Inner.matches(Node, Finder, Builder);                             \
+    return false;                                                              \
+  }
+
+PROGRAM_POINT_MATCHER(PreStmt, preStmtNode)*/
+
+AST_MATCHER_P(ExplodedNode, preStmtNode, ExplodedNodeMatcher, Inner) {
+  if (Node.getLocationAs<PreStmt>())
+    return Inner.matches(Node, Finder, Builder);
+  return false;
+}
+
+AST_MATCHER_P(ExplodedNode, postStmtNode, ExplodedNodeMatcher, Inner) {
+  if (Node.getLocationAs<PostStmt>())
+    return Inner.matches(Node, Finder, Builder);
+  return false;
+}
+
+AST_MATCHER_P(ExplodedNode, callEnterNode, StatementMatcher, Inner) {
+  if (auto CallEnterPP = Node.getLocationAs<CallEnter>())
+    if (const Stmt *CE = CallEnterPP->getCallExpr())
+      return Inner.matches(*CE, Finder, Builder);
+  return false;
+}
+
+static bool isLastNode(const DynTypedNode &Node) {
+  if (const ExplodedNode *N = Node.get<ExplodedNode>())
+    return N->succ_empty();
+  return true;
+}
+
+using PathVariadicOperatorFunction = MatchResult (*)(
+    const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+    GraphMatchFinder *Finder, GraphBoundNodesTreeBuilder *Builder,
+    ArrayRef<DynTypedMatcher> InnerMatchers, MatcherStateID StateID);
+
+template <PathVariadicOperatorFunction Func>
+class VariadicPathMatcher : public DynPathMatcherInterface {
+public:
+  VariadicPathMatcher(std::vector<DynTypedMatcher> InnerMatchers)
+      : InnerMatchers(std::move(InnerMatchers)) {}
+
+  MatchResult
+  dynMatches(const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+             GraphMatchFinder *Finder, GraphBoundNodesTreeBuilder *Builder,
+             MatcherStateID StateID) const override {
+    return Func(DynNode, Finder, Builder, InnerMatchers, StateID);
+  }
+
+private:
+  std::vector<DynTypedMatcher> InnerMatchers;
+};
+
+/// \brief Polymorphic matcher object that uses a \c
+/// DynTypedMatcher::VariadicOperator operator.
+///
+/// Input matchers can have any type (including other polymorphic matcher
+/// types), and the actual Matcher<T> is generated on demand with an implicit
+/// coversion operator.
+template <PathVariadicOperatorFunction Func, typename... Ps>
+class VariadicOperatorPathMatcher {
+public:
+  VariadicOperatorPathMatcher(Ps &&... Params)
+      : Params(std::forward<Ps>(Params)...) {}
+
+  template <typename NodeTy> operator PathMatcher<NodeTy>() const {
+    return PathMatcher<NodeTy>(
+        DynTypedPathMatcher(new VariadicPathMatcher<Func>(
+            getMatchers<NodeTy>(llvm::index_sequence_for<Ps...>()))));
+  }
+
+private:
+  // Helper method to unpack the tuple into a vector.
+  template <typename T, std::size_t... Is>
+  std::vector<DynTypedMatcher> getMatchers(llvm::index_sequence<Is...>) const {
+    return {Matcher<T>(std::get<Is>(Params))...};
+  }
+
+  // const DynTypedMatcher::VariadicOperator Op;
+  std::tuple<Ps...> Params;
+};
+
+/// \brief Overloaded function object to generate VariadicOperatorMatcher
+///   objects from arbitrary matchers.
+template <PathVariadicOperatorFunction Func, unsigned MinCount,
+          unsigned MaxCount>
+struct VariadicOperatorPathMatcherFunc {
+  //  DynTypedMatcher::VariadicOperator Op;
+
+  template <typename... Ms>
+  VariadicOperatorPathMatcher<Func, Ms...> operator()(Ms &&... Ps) const {
+    static_assert(MinCount <= sizeof...(Ms) && sizeof...(Ms) <= MaxCount,
+                  "invalid number of parameters for variadic matcher");
+    return VariadicOperatorPathMatcher<Func, Ms...>(std::forward<Ms>(Ps)...);
+  }
+};
+
+/*
 template <typename MatcherTy>
 ExplodedNodeMatcher *statementNode(MatcherTy Inner) {
   return new StatementNodeMatcher<MatcherTy>(Inner);
@@ -470,22 +493,25 @@ ExplodedNodeMatcher *statementNode(MatcherTy Inner) {
 ExplodedNodeMatcher *unlessPS(ExplodedNodeMatcher *Inner) {
   return new NotMatcher(Inner);
 }
+*/
 
 class PathMatchCallback;
 
+using PathSensMatcher = PathMatcher<ExplodedNode>;
+
 class GraphMatchFinder {
   ASTContext &ASTCtx;
-  std::vector<BindEntry> Entries;
+  std::vector<BindEntry<ExplodedNode>> Entries;
   GraphBoundNodesTreeBuilder Builder;
   GraphBoundNodeMap BoundMap;
-  std::map<PathMatcher *, PathMatchCallback *> PathMatchers;
+  std::map<PathSensMatcher *, PathMatchCallback *> PathSensMatchers;
 
 public:
   void match(const Decl *D);
   void match(ExplodedGraph &G, BugReporter &BR, ExprEngine &Eng);
-  void addMatcher(const PathMatcher &Matcher, PathMatchCallback *Callback) {
-    PathMatcher *Copy = new PathMatcher(Matcher);
-    PathMatchers[Copy] = Callback;
+  void addMatcher(const PathSensMatcher &Matcher, PathMatchCallback *Callback) {
+    PathSensMatcher *Copy = new PathSensMatcher(Matcher);
+    PathSensMatchers[Copy] = Callback;
   }
 
   void advance(const ExplodedNode *Pred, const ExplodedNode *Succ);
@@ -493,17 +519,154 @@ public:
   GraphMatchFinder(ASTContext &ASTCtx) : ASTCtx(ASTCtx) {}
 };
 
+static std::pair<size_t, bool>
+matchNotMatchers(size_t StartIndex, const DynTypedNode &Node, ASTContext &Ctx,
+                 ArrayRef<DynTypedMatcher> Matchers) {
+  size_t I = StartIndex;
+  for (; I < Matchers.size(); ++I) {
+    if (!Matchers[I].isNegative())
+      return {I, true};
+    MatchFinder Finder;
+    // Currently, negative matchers are not allowed to add bound nodes.
+    // FIXME: design and implement this.
+    CollectMatchesCallback Callback;
+    Finder.addDynamicMatcher(Matchers[I], &Callback);
+    Finder.match(Node, Ctx);
+    if (!Callback.HasMatches)
+      // match(Matchers[I], Node.getUnchecked<T>(), Ctx);
+      //   if (!match(Matchers[I], Node, Ctx))
+      //  if (!Matchers[I].matches(Node, Finder, Builder))
+      return {I, false};
+  }
+  return {I, true};
+}
+
+static size_t skipNotMatchers(size_t Index,
+                              ArrayRef<DynTypedMatcher> Matchers) {
+  while (Index < Matchers.size() && Matchers[Index].isNegative())
+    ++Index;
+  assert(Index != Matchers.size() && "Cannot skip terminating not matchers!");
+  return Index;
+}
+
+static size_t matcherIndexByStateID(unsigned StateID,
+                                    ArrayRef<DynTypedMatcher> Matchers) {
+  size_t Index = 0, NumMatchers = Matchers.size();
+  unsigned State = 0;
+  for (; State < StateID && Index < NumMatchers; ++State) {
+    Index = skipNotMatchers(Index, Matchers);
+    ++Index;
+  }
+  assert(State == StateID && Index < NumMatchers &&
+         "Cannot find the matcher corresponding to State ID!");
+  return Index;
+}
+
+MatchResult SequenceVariadicOperator(
+    const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+    GraphMatchFinder *Finder, GraphBoundNodesTreeBuilder *Builder,
+    ArrayRef<DynTypedMatcher> InnerMatchers, MatcherStateID StateID) {
+  size_t Index = matcherIndexByStateID(StateID, InnerMatchers);
+  bool NegMatch = false;
+  std::tie(Index, NegMatch) =
+      matchNotMatchers(Index, DynNode, Finder->getASTContext(), InnerMatchers);
+  if (!NegMatch) {
+    if (StateID == 0)
+      return {MatchAction::RejectForever, StateInvalid};
+    else
+      return {MatchAction::RejectSingle, StateInvalid};
+  }
+
+  bool IsNodeLast = isLastNode(DynNode);
+  // Negative matchers are matching.
+  if (Index == InnerMatchers.size()) {
+    if (IsNodeLast)
+      // If the node is last and no matchers remain, the path match
+      // is accepted.
+      return {MatchAction::Accept, Index};
+    else
+      // If the node is not last but all final negative matchers match,
+      // continue matching until the final node is met.
+      return {MatchAction::Pass, StateID};
+  }
+
+  // Next matcher should exist and it should be positive.
+  assert(InnerMatchers[Index].isPositive());
+  bool IsLastMatcher = Index == InnerMatchers.size() - 1;
+  if (IsNodeLast && !IsLastMatcher)
+    return {MatchAction::RejectSingle, StateInvalid};
+
+  MatchFinder NodeFinder;
+  CollectMatchesCallback CB;
+  NodeFinder.addDynamicMatcher(InnerMatchers[Index], &CB);
+  NodeFinder.match(DynNode, Finder->getASTContext());
+  bool PositiveMatch =
+      // InnerMatchers[Index].matches(DynNode, Finder->BasicFinder, Builder);
+      CB.HasMatches;
+
+  if (PositiveMatch) {
+    if (IsLastMatcher)
+      return {MatchAction::Accept, Index};
+    else
+      return {MatchAction::Advance, Index + 1};
+  } else {
+    return {MatchAction::Pass, StateID};
+  }
+  llvm_unreachable("The result should be already defined and returned!");
+}
+
+/// \brief Creates a Matcher<T> that matches if all inner matchers match.
+template <typename NodeTy>
+PathMatcher<NodeTy>
+makeSequentialComposite(ArrayRef<const Matcher<NodeTy> *> InnerMatchers) {
+  // For the size() == 0 case, we return a "true" matcher.
+  if (InnerMatchers.empty()) {
+    //   return PathMatcher<T>(TrueMatcher());
+    assert(false && "Not implemented yet!");
+  }
+  // For the size() == 1 case, we simply return that one matcher.
+  // No need to wrap it in a variadic operation.
+  if (InnerMatchers.size() == 1) {
+    assert(false && "Not implemented yet!");
+    // return BindableMatcher<T>(*InnerMatchers[0]);
+  }
+
+  using PI = llvm::pointee_iterator<const Matcher<NodeTy> *const *>;
+
+  std::vector<DynTypedMatcher> DynMatchers(PI(InnerMatchers.begin()),
+                                           PI(InnerMatchers.end()));
+  return PathMatcher<NodeTy>(
+      DynTypedPathMatcher(new VariadicPathMatcher<SequenceVariadicOperator>(
+          std::move(DynMatchers))));
+}
+
+///
+/// FIXME: add a useful description.
+template <typename NodeTy>
+class VariadicSequentialPathMatcher
+    : public VariadicFunction<PathMatcher<NodeTy>, Matcher<NodeTy>,
+                              makeSequentialComposite<NodeTy>> {
+public:
+  VariadicSequentialPathMatcher() {}
+};
+
+// template <typename NodeTy>
+const VariadicOperatorPathMatcherFunc<SequenceVariadicOperator, 1,
+                                      std::numeric_limits<unsigned>::max()>
+    hasSequence;
+
 class PathMatchCallback {
 public:
   virtual void run() = 0;
 };
 
-MatchAction BindEntry::matchNewNode(const ExplodedNode *N,
-                                    GraphMatchFinder *Finder,
-                                    GraphBoundNodesTreeBuilder *Builder) {
-  return Matcher->matches(N, Finder, Builder, StateID);
+template <typename NodeTy>
+MatchResult
+BindEntry<NodeTy>::matchNewNode(const NodeTy &Node, GraphMatchFinder *Finder,
+                                GraphBoundNodesTreeBuilder *Builder) {
+  return Matcher->matches(Node, Finder, Builder, StateID);
 }
-
+/*
 template <typename MatcherTy>
 bool StatementNodeMatcher<MatcherTy>::matches(
     const ExplodedNode *Node, GraphMatchFinder *Finder,
@@ -518,21 +681,21 @@ bool StatementNodeMatcher<MatcherTy>::matches(
   }
   return false;
 }
-
+*/
 void GraphMatchFinder::advance(const ExplodedNode *Pred,
                                const ExplodedNode *Succ) {
   // Advance and remove unmatched items if needed.
   size_t I = 0;
   while (I < Entries.size()) {
-    BindEntry &Entry = Entries[I];
-    MatchAction MatchRes = Entry.matchNewNode(Succ, this, &Builder);
-    switch (MatchRes) {
+    BindEntry<ExplodedNode> &Entry = Entries[I];
+    MatchResult MatchRes = Entry.matchNewNode(*Succ, this, &Builder);
+    switch (MatchRes.Action) {
     case MatchAction::Advance:
-      Entry.advance();
+      Entry.advance(MatchRes.NewStateID);
       ++I;
       break;
     case MatchAction::Accept: {
-      auto *Callback = PathMatchers[Entry.Matcher];
+      auto *Callback = PathSensMatchers[Entry.Matcher];
       Callback->run();
     } // Fall-through
     case MatchAction::RejectSingle:
@@ -543,24 +706,22 @@ void GraphMatchFinder::advance(const ExplodedNode *Pred,
       // Do nothing.
       break;
     case MatchAction::RejectForever:
-      llvm_unreachable("Existing entries should never reveive RejectForever!");
+      llvm_unreachable("Existing entries should never receive RejectForever!");
     default:
       llvm_unreachable("Non-existing match result!");
     }
   }
 
   // Check if a new item (StateID == 0) should be added.
-  for (auto &MatchItem : PathMatchers) {
-    PathMatcher *Matcher = MatchItem.first;
-    MatchAction Res = Matcher->matches(Succ, this, &Builder, 0);
-    if (Res == MatchAction::Advance) {
+  for (auto &MatchItem : PathSensMatchers) {
+    PathSensMatcher *Matcher = MatchItem.first;
+    MatchResult Res = Matcher->matches(*Succ, this, &Builder, 0);
+    if (Res.Action == MatchAction::Advance) {
       GraphBoundNodeMap Bounds;
-      if (Matcher->isSingle()) {
-        auto *Callback = PathMatchers[Matcher];
-        Callback->run();
-      } else {
-        Entries.emplace_back(Matcher, Bounds);
-      }
+      Entries.emplace_back(Matcher, Bounds, Res.NewStateID);
+    } else if (Res.Action == MatchAction::Accept) {
+      auto *Callback = PathSensMatchers[Matcher];
+      Callback->run();
     }
   }
 }
@@ -670,12 +831,17 @@ void PthreadLockCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
   GraphMatchFinder Finder(BR.getContext());
   auto Callback = createProxyCallback(
       [&FuncName]() -> void { llvm::errs() << FuncName << " matches!\n"; });
+
+  StatementMatcher NotChdir =
+      callExpr(unless(callee(functionDecl(hasName("::chdir")))));
   Finder.addMatcher(
-      {statementNode(callExpr(callee(functionDecl(hasName("::chroot"))))),
-       unlessPS(
-           statementNode(callExpr(callee(functionDecl(hasName("::chdir")))))),
-       statementNode(
-           callExpr(unless(callee(functionDecl(hasName("::chdir"))))))},
+      hasSequence(postStmtNode(statementNode(
+                      callExpr(callee(functionDecl(hasName("::chroot")))))),
+                  unless(statementNode(
+                      callExpr(callee(functionDecl(hasName("::chdir"))),
+                               hasArgument(0, stringLiteral(hasSize(1)))))),
+                  explodedNode(anyOf(postStmtNode(statementNode(NotChdir)),
+                                     callEnterNode(NotChdir)))),
       &Callback);
   Finder.match(G, BR, Eng);
 }
