@@ -36,6 +36,12 @@ namespace clang {
 
 struct PrintingPolicy;
 
+namespace ento {
+namespace ast_graph_type_traits {
+class DynTypedNode;
+}
+}
+
 namespace ast_type_traits {
 
 /// Kind identifier.
@@ -114,7 +120,6 @@ public:
     return KindId > NKI_LastKindWithoutPointerIdentity;
   }
 
-private:
   /// Kind ids.
   ///
   /// Includes all possible base and derived kinds.
@@ -430,6 +435,7 @@ private:
     }
   };
 
+  friend class ento::ast_graph_type_traits::DynTypedNode;
   ASTNodeKind NodeKind;
 
   /// Stores the data of the node.

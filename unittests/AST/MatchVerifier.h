@@ -155,7 +155,7 @@ void MatchVerifier<NodeType>::run(const MatchFinder::MatchResult &Result) {
 }
 
 template <>
-inline void MatchVerifier<ast_type_traits::DynTypedNode>::run(
+inline void MatchVerifier<ento::ast_graph_type_traits::DynTypedNode>::run(
     const MatchFinder::MatchResult &Result) {
   BoundNodes::IDToNodeMap M = Result.Nodes.getMap();
   BoundNodes::IDToNodeMap::const_iterator I = M.find("");
@@ -253,7 +253,7 @@ private:
 };
 
 /// \brief Verify whether a node's dump contains a given substring.
-class DumpVerifier : public MatchVerifier<ast_type_traits::DynTypedNode> {
+class DumpVerifier : public MatchVerifier<ento::ast_graph_type_traits::DynTypedNode> {
 public:
   void expectSubstring(const std::string &Str) {
     ExpectSubstring = Str;
@@ -261,7 +261,7 @@ public:
 
 protected:
   void verify(const MatchFinder::MatchResult &Result,
-              const ast_type_traits::DynTypedNode &Node) override {
+              const ento::ast_graph_type_traits::DynTypedNode &Node) override {
     std::string DumpStr;
     llvm::raw_string_ostream Dump(DumpStr);
     Node.dump(Dump, *Result.SourceManager);
@@ -280,7 +280,7 @@ private:
 };
 
 /// \brief Verify whether a node's pretty print matches a given string.
-class PrintVerifier : public MatchVerifier<ast_type_traits::DynTypedNode> {
+class PrintVerifier : public MatchVerifier<ento::ast_graph_type_traits::DynTypedNode> {
 public:
   void expectString(const std::string &Str) {
     ExpectString = Str;
@@ -288,7 +288,7 @@ public:
 
 protected:
   void verify(const MatchFinder::MatchResult &Result,
-              const ast_type_traits::DynTypedNode &Node) override {
+              const ento::ast_graph_type_traits::DynTypedNode &Node) override {
     std::string PrintStr;
     llvm::raw_string_ostream Print(PrintStr);
     Node.print(Print, Result.Context->getPrintingPolicy());

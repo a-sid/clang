@@ -44,11 +44,11 @@ class ArgKind {
   ArgKind(Kind K) : K(K) { assert(K != AK_Matcher); }
 
   /// Constructor for matcher types.
-  ArgKind(ast_type_traits::ASTNodeKind MatcherKind)
+  ArgKind(ento::ast_graph_type_traits::ASTGraphNodeKind MatcherKind)
       : K(AK_Matcher), MatcherKind(MatcherKind) {}
 
   Kind getArgKind() const { return K; }
-  ast_type_traits::ASTNodeKind getMatcherKind() const {
+  ento::ast_graph_type_traits::ASTGraphNodeKind getMatcherKind() const {
     assert(K == AK_Matcher);
     return MatcherKind;
   }
@@ -72,7 +72,7 @@ class ArgKind {
 
 private:
   Kind K;
-  ast_type_traits::ASTNodeKind MatcherKind;
+  ento::ast_graph_type_traits::ASTGraphNodeKind MatcherKind;
 };
 
 using ast_matchers::internal::DynTypedMatcher;
@@ -94,7 +94,7 @@ class VariantMatcher {
   /// Methods that depend on T from hasTypedMatcher/getTypedMatcher.
   class MatcherOps {
   public:
-    MatcherOps(ast_type_traits::ASTNodeKind NodeKind) : NodeKind(NodeKind) {}
+    MatcherOps(ento::ast_graph_type_traits::ASTGraphNodeKind NodeKind) : NodeKind(NodeKind) {}
 
     bool canConstructFrom(const DynTypedMatcher &Matcher,
                           bool &IsExactMatch) const;
@@ -115,7 +115,7 @@ class VariantMatcher {
     ~MatcherOps() = default;
 
   private:
-    ast_type_traits::ASTNodeKind NodeKind;
+    ento::ast_graph_type_traits::ASTGraphNodeKind NodeKind;
   };
 
   /// Payload interface to be specialized by each matcher type.
@@ -128,7 +128,7 @@ class VariantMatcher {
     virtual std::string getTypeAsString() const = 0;
     virtual llvm::Optional<DynTypedMatcher>
     getTypedMatcher(const MatcherOps &Ops) const = 0;
-    virtual bool isConvertibleTo(ast_type_traits::ASTNodeKind Kind,
+    virtual bool isConvertibleTo(ento::ast_graph_type_traits::ASTGraphNodeKind Kind,
                                  unsigned *Specificity) const = 0;
   };
 
@@ -185,7 +185,7 @@ public:
   ///
   /// \param Specificity value corresponding to the "specificity" of the
   ///   conversion.
-  bool isConvertibleTo(ast_type_traits::ASTNodeKind Kind,
+  bool isConvertibleTo(ento::ast_graph_type_traits::ASTGraphNodeKind Kind,
                        unsigned *Specificity) const {
     if (Value)
       return Value->isConvertibleTo(Kind, Specificity);
@@ -225,7 +225,7 @@ private:
 template <typename T>
 struct VariantMatcher::TypedMatcherOps final : VariantMatcher::MatcherOps {
   TypedMatcherOps()
-      : MatcherOps(ast_type_traits::ASTNodeKind::getFromNodeKind<T>()) {}
+      : MatcherOps(ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<T>()) {}
   typedef ast_matchers::internal::Matcher<T> MatcherT;
 
   DynTypedMatcher
