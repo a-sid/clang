@@ -102,7 +102,7 @@ public:
     return llvm::None;
   }
 
-  bool isConvertibleTo(ast_type_traits::ASTNodeKind Kind,
+  bool isConvertibleTo(ento::ast_graph_type_traits::ASTGraphNodeKind Kind,
                        unsigned *Specificity) const override {
     return ArgKind(Matcher.getSupportedKind())
         .isConvertibleTo(Kind, Specificity);
@@ -160,7 +160,7 @@ public:
     return llvm::None;
   }
 
-  bool isConvertibleTo(ast_type_traits::ASTNodeKind Kind,
+  bool isConvertibleTo(ento::ast_graph_type_traits::ASTGraphNodeKind Kind,
                        unsigned *Specificity) const override {
     unsigned MaxSpecificity = 0;
     for (const DynTypedMatcher &Matcher : Matchers) {
@@ -203,7 +203,7 @@ public:
     return Ops.constructVariadicOperator(Op, Args);
   }
 
-  bool isConvertibleTo(ast_type_traits::ASTNodeKind Kind,
+  bool isConvertibleTo(ento::ast_graph_type_traits::ASTGraphNodeKind Kind,
                        unsigned *Specificity) const override {
     for (const VariantMatcher &Matcher : Args) {
       if (!Matcher.isConvertibleTo(Kind, Specificity))

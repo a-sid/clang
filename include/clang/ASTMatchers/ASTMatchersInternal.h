@@ -35,7 +35,7 @@
 #ifndef LLVM_CLANG_ASTMATCHERS_ASTMATCHERSINTERNAL_H
 #define LLVM_CLANG_ASTMATCHERS_ASTMATCHERSINTERNAL_H
 
-#include "clang/AST/ASTTypeTraits.h"
+//#include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
@@ -48,6 +48,7 @@
 #include "clang/AST/TypeLoc.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/OperatorKinds.h"
+#include "clang/ASTMatchers/ASTGraphTypeTraits.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
@@ -142,7 +143,7 @@ public:
   /// Adds \c Node to the map with key \c ID.
   ///
   /// The node's base type should be in NodeBaseType or it will be unaccessible.
-  void addNode(StringRef ID, const ast_type_traits::DynTypedNode& DynNode) {
+  void addNode(StringRef ID, const ento::ast_graph_type_traits::DynTypedNode &DynNode) {
     NodeMap[ID] = DynNode;
   }
 
@@ -159,10 +160,10 @@ public:
     return It->second.get<T>();
   }
 
-  ast_type_traits::DynTypedNode getNode(StringRef ID) const {
+  ento::ast_graph_type_traits::DynTypedNode getNode(StringRef ID) const {
     IDToNodeMap::const_iterator It = NodeMap.find(ID);
     if (It == NodeMap.end()) {
-      return ast_type_traits::DynTypedNode();
+      return ento::ast_graph_type_traits::DynTypedNode();
     }
     return It->second;
   }
@@ -177,11 +178,9 @@ public:
   /// Note that we're using std::map here, as for memoization:
   /// - we need a comparison operator
   /// - we need an assignment operator
-  using IDToNodeMap = std::map<std::string, ast_type_traits::DynTypedNode>;
+  using IDToNodeMap = std::map<std::string, ento::ast_graph_type_traits::DynTypedNode>;
 
-  const IDToNodeMap &getMap() const {
-    return NodeMap;
-  }
+  const IDToNodeMap &getMap() const { return NodeMap; }
 
   /// Returns \c true if this \c BoundNodesMap can be compared, i.e. all
   /// stored nodes have memoization data.
@@ -212,11 +211,11 @@ public:
     /// Called multiple times during a single call to VisitMatches(...).
     ///
     /// 'BoundNodesView' contains the bound nodes for a single match.
-    virtual void visitMatch(const BoundNodes& BoundNodesView) = 0;
+    virtual void visitMatch(const BoundNodes &BoundNodesView) = 0;
   };
 
   /// Add a binding from an id to a node.
-  void setBinding(StringRef Id, const ast_type_traits::DynTypedNode &DynNode) {
+  void setBinding(StringRef Id, const ento::ast_graph_type_traits::DynTypedNode &DynNode) {
     if (Bindings.empty())
       Bindings.emplace_back();
     for (BoundNodesMap &Binding : Bindings)
@@ -273,9 +272,9 @@ public:
   ///
   /// May bind \p DynNode to an ID via \p Builder, or recurse into
   /// the AST via \p Finder.
-  virtual bool dynMatches(const ast_type_traits::DynTypedNode &DynNode,
-                          ASTMatchFinder *Finder,
-                          BoundNodesTreeBuilder *Builder) const = 0;
+  virtual bool
+  dynMatches(const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+             ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder) const = 0;
 };
 
 /// Generic interface for matchers on an AST node of type T.
@@ -296,7 +295,7 @@ public:
                        ASTMatchFinder *Finder,
                        BoundNodesTreeBuilder *Builder) const = 0;
 
-  bool dynMatches(const ast_type_traits::DynTypedNode &DynNode,
+  bool dynMatches(const ento::ast_graph_type_traits::DynTypedNode &DynNode,
                   ASTMatchFinder *Finder,
                   BoundNodesTreeBuilder *Builder) const override {
     return matches(DynNode.getUnchecked<T>(), Finder, Builder);
@@ -335,8 +334,11 @@ class DynTypedMatcher {
 public:
   /// Takes ownership of the provided implementation pointer.
   template <typename T>
-  DynTypedMatcher(MatcherInterface<T> *Implementation)
-      : SupportedKind(ast_type_traits::ASTNodeKind::getFromNodeKind<T>()),
+  DynTypedMatcher(MatcherInterface<T> *Implementation, bool IsNegative = false)
+      : IsNegative(IsNegative),
+        SupportedKind(
+            ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<
+                T>()),
         RestrictKind(SupportedKind), Implementation(Implementation) {}
 
   /// Construct from a variadic function.
@@ -356,41 +358,48 @@ public:
     ///
     /// Uses the variadic matcher interface, but fails if
     /// InnerMatchers.size() != 1.
-    VO_UnaryNot
+    VO_UnaryNot,
   };
 
   static DynTypedMatcher
   constructVariadic(VariadicOperator Op,
-                    ast_type_traits::ASTNodeKind SupportedKind,
+                    ento::ast_graph_type_traits::ASTGraphNodeKind SupportedKind,
                     std::vector<DynTypedMatcher> InnerMatchers);
 
   /// Get a "true" matcher for \p NodeKind.
   ///
   /// It only checks that the node is of the right kind.
-  static DynTypedMatcher trueMatcher(ast_type_traits::ASTNodeKind NodeKind);
+  static DynTypedMatcher
+  trueMatcher(ento::ast_graph_type_traits::ASTGraphNodeKind NodeKind);
 
   void setAllowBind(bool AB) { AllowBind = AB; }
+
+  bool isNegative() const { return IsNegative; }
+  bool isPositive() const { return !IsNegative; }
 
   /// Check whether this matcher could ever match a node of kind \p Kind.
   /// \return \c false if this matcher will never match such a node. Otherwise,
   /// return \c true.
-  bool canMatchNodesOfKind(ast_type_traits::ASTNodeKind Kind) const;
+  bool
+  canMatchNodesOfKind(ento::ast_graph_type_traits::ASTGraphNodeKind Kind) const;
 
   /// Return a matcher that points to the same implementation, but
   ///   restricts the node types for \p Kind.
-  DynTypedMatcher dynCastTo(const ast_type_traits::ASTNodeKind Kind) const;
+  DynTypedMatcher
+  dynCastTo(const ento::ast_graph_type_traits::ASTGraphNodeKind Kind) const;
 
   /// Returns true if the matcher matches the given \c DynNode.
-  bool matches(const ast_type_traits::DynTypedNode &DynNode,
+  bool matches(const ento::ast_graph_type_traits::DynTypedNode &DynNode,
                ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder) const;
 
   /// Same as matches(), but skips the kind check.
   ///
   /// It is faster, but the caller must ensure the node is valid for the
   /// kind of this matcher.
-  bool matchesNoKindCheck(const ast_type_traits::DynTypedNode &DynNode,
-                          ASTMatchFinder *Finder,
-                          BoundNodesTreeBuilder *Builder) const;
+  bool
+  matchesNoKindCheck(const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+                     ASTMatchFinder *Finder,
+                     BoundNodesTreeBuilder *Builder) const;
 
   /// Bind the specified \p ID to the matcher.
   /// \return A new matcher with the \p ID bound to it if this matcher supports
@@ -404,7 +413,8 @@ public:
   /// include both in the ID to make it unique.
   ///
   /// \c MatcherIDType supports operator< and provides strict weak ordering.
-  using MatcherIDType = std::pair<ast_type_traits::ASTNodeKind, uint64_t>;
+  using MatcherIDType =
+      std::pair<ento::ast_graph_type_traits::ASTGraphNodeKind, uint64_t>;
   MatcherIDType getID() const {
     /// FIXME: Document the requirements this imposes on matcher
     /// implementations (no new() implementation_ during a Matches()).
@@ -416,7 +426,7 @@ public:
   ///
   /// \c matches() will always return false unless the node passed is of this
   /// or a derived type.
-  ast_type_traits::ASTNodeKind getSupportedKind() const {
+  ento::ast_graph_type_traits::ASTGraphNodeKind getSupportedKind() const {
     return SupportedKind;
   }
 
@@ -426,9 +436,10 @@ public:
   /// This method verifies that the underlying matcher in \c Other can process
   /// nodes of types T.
   template <typename T> bool canConvertTo() const {
-    return canConvertTo(ast_type_traits::ASTNodeKind::getFromNodeKind<T>());
+    return canConvertTo(
+        ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<T>());
   }
-  bool canConvertTo(ast_type_traits::ASTNodeKind To) const;
+  bool canConvertTo(ento::ast_graph_type_traits::ASTGraphNodeKind To) const;
 
   /// Construct a \c Matcher<T> interface around the dynamic matcher.
   ///
@@ -447,20 +458,22 @@ public:
   template <typename T> Matcher<T> unconditionalConvertTo() const;
 
 private:
- DynTypedMatcher(ast_type_traits::ASTNodeKind SupportedKind,
-                 ast_type_traits::ASTNodeKind RestrictKind,
-                 IntrusiveRefCntPtr<DynMatcherInterface> Implementation)
-     : SupportedKind(SupportedKind), RestrictKind(RestrictKind),
-       Implementation(std::move(Implementation)) {}
+  DynTypedMatcher(ento::ast_graph_type_traits::ASTGraphNodeKind SupportedKind,
+                  ento::ast_graph_type_traits::ASTGraphNodeKind RestrictKind,
+                  IntrusiveRefCntPtr<DynMatcherInterface> Implementation,
+                  bool IsNegative = false)
+      : IsNegative(IsNegative), SupportedKind(SupportedKind),
+        RestrictKind(RestrictKind), Implementation(std::move(Implementation)) {}
 
   bool AllowBind = false;
-  ast_type_traits::ASTNodeKind SupportedKind;
+  bool IsNegative;
+  ento::ast_graph_type_traits::ASTGraphNodeKind SupportedKind;
 
   /// A potentially stricter node kind.
   ///
   /// It allows to perform implicit and dynamic cast of matchers without
   /// needing to change \c Implementation.
-  ast_type_traits::ASTNodeKind RestrictKind;
+  ento::ast_graph_type_traits::ASTGraphNodeKind RestrictKind;
   IntrusiveRefCntPtr<DynMatcherInterface> Implementation;
 };
 
@@ -501,7 +514,7 @@ public:
                                !std::is_same<From, T>::value>::type * = nullptr)
       : Implementation(restrictMatcher(Other.Implementation)) {
     assert(Implementation.getSupportedKind().isSame(
-        ast_type_traits::ASTNodeKind::getFromNodeKind<T>()));
+        ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<T>()));
   }
 
   /// Implicitly converts \c Matcher<Type> to \c Matcher<QualType>.
@@ -527,8 +540,9 @@ public:
   bool matches(const T &Node,
                ASTMatchFinder *Finder,
                BoundNodesTreeBuilder *Builder) const {
-    return Implementation.matches(ast_type_traits::DynTypedNode::create(Node),
-                                  Finder, Builder);
+    return Implementation.matches(
+        ento::ast_graph_type_traits::DynTypedNode::create(Node), Finder,
+        Builder);
   }
 
   /// Returns an ID that uniquely identifies the matcher.
@@ -559,7 +573,8 @@ public:
       if (Node.isNull())
         return false;
       return this->InnerMatcher.matches(
-          ast_type_traits::DynTypedNode::create(*Node), Finder, Builder);
+          ento::ast_graph_type_traits::DynTypedNode::create(*Node), Finder,
+          Builder);
     }
   };
 
@@ -571,13 +586,14 @@ private:
   friend class DynTypedMatcher;
 
   static DynTypedMatcher restrictMatcher(const DynTypedMatcher &Other) {
-    return Other.dynCastTo(ast_type_traits::ASTNodeKind::getFromNodeKind<T>());
+    return Other.dynCastTo(
+          ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<T>());
   }
 
   explicit Matcher(const DynTypedMatcher &Implementation)
       : Implementation(restrictMatcher(Implementation)) {
-    assert(this->Implementation.getSupportedKind()
-               .isSame(ast_type_traits::ASTNodeKind::getFromNodeKind<T>()));
+    assert(this->Implementation.getSupportedKind().isSame(
+           ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<T>()));
   }
 
   DynTypedMatcher Implementation;
@@ -597,9 +613,11 @@ inline Matcher<T> makeMatcher(MatcherInterface<T> *Implementation) {
 template <>
 inline Matcher<QualType> DynTypedMatcher::convertTo<QualType>() const {
   assert(canConvertTo<QualType>());
-  const ast_type_traits::ASTNodeKind SourceKind = getSupportedKind();
+  const ento::ast_graph_type_traits::ASTGraphNodeKind SourceKind =
+      getSupportedKind();
   if (SourceKind.isSame(
-          ast_type_traits::ASTNodeKind::getFromNodeKind<Type>())) {
+          ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<
+              Type>())) {
     // We support implicit conversion from Matcher<Type> to Matcher<QualType>
     return unconditionalConvertTo<Type>();
   }
@@ -897,7 +915,7 @@ private:
                    BoundNodesTreeBuilder *Builder) const {
     return Node != nullptr &&
            this->InnerMatcher.matches(
-               ast_type_traits::DynTypedNode::create(*Node), Finder, Builder);
+               ento::ast_graph_type_traits::DynTypedNode::create(*Node), Finder, Builder);
   }
 };
 
@@ -989,8 +1007,8 @@ public:
                   std::is_base_of<TypeLoc, T>::value ||
                   std::is_base_of<QualType, T>::value,
                   "unsupported type for recursive matching");
-    return matchesChildOf(ast_type_traits::DynTypedNode::create(Node),
-                          Matcher, Builder, Traverse, Bind);
+    return matchesChildOf(ento::ast_graph_type_traits::DynTypedNode::create(Node), Matcher,
+                          Builder, Traverse, Bind);
   }
 
   template <typename T>
@@ -1005,7 +1023,7 @@ public:
                   std::is_base_of<TypeLoc, T>::value ||
                   std::is_base_of<QualType, T>::value,
                   "unsupported type for recursive matching");
-    return matchesDescendantOf(ast_type_traits::DynTypedNode::create(Node),
+    return matchesDescendantOf(ento::ast_graph_type_traits::DynTypedNode::create(Node),
                                Matcher, Builder, Bind);
   }
 
@@ -1020,25 +1038,25 @@ public:
                       std::is_base_of<Stmt, T>::value ||
                       std::is_base_of<TypeLoc, T>::value,
                   "type not allowed for recursive matching");
-    return matchesAncestorOf(ast_type_traits::DynTypedNode::create(Node),
+    return matchesAncestorOf(ento::ast_graph_type_traits::DynTypedNode::create(Node),
                              Matcher, Builder, MatchMode);
   }
 
   virtual ASTContext &getASTContext() const = 0;
 
 protected:
-  virtual bool matchesChildOf(const ast_type_traits::DynTypedNode &Node,
+  virtual bool matchesChildOf(const ento::ast_graph_type_traits::DynTypedNode &Node,
                               const DynTypedMatcher &Matcher,
                               BoundNodesTreeBuilder *Builder,
                               TraversalKind Traverse,
                               BindKind Bind) = 0;
 
-  virtual bool matchesDescendantOf(const ast_type_traits::DynTypedNode &Node,
+  virtual bool matchesDescendantOf(const ento::ast_graph_type_traits::DynTypedNode &Node,
                                    const DynTypedMatcher &Matcher,
                                    BoundNodesTreeBuilder *Builder,
                                    BindKind Bind) = 0;
 
-  virtual bool matchesAncestorOf(const ast_type_traits::DynTypedNode &Node,
+  virtual bool matchesAncestorOf(const ento::ast_graph_type_traits::DynTypedNode &Node,
                                  const DynTypedMatcher &Matcher,
                                  BoundNodesTreeBuilder *Builder,
                                  AncestorMatchMode MatchMode) = 0;
@@ -1230,7 +1248,8 @@ public:
   template <typename T>
   operator Matcher<T>() const {
     return DynTypedMatcher::trueMatcher(
-               ast_type_traits::ASTNodeKind::getFromNodeKind<T>())
+               ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<
+                   T>())
         .template unconditionalConvertTo<T>();
   }
 };
@@ -1322,7 +1341,9 @@ public:
 
   template <typename T> operator Matcher<T>() const {
     return DynTypedMatcher::constructVariadic(
-               Op, ast_type_traits::ASTNodeKind::getFromNodeKind<T>(),
+               Op,
+               ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<
+                   T>(),
                getMatchers<T>(llvm::index_sequence_for<Ps...>()))
         .template unconditionalConvertTo<T>();
   }
@@ -1380,7 +1401,7 @@ BindableMatcher<T> makeAllOfComposite(
   return BindableMatcher<T>(
       DynTypedMatcher::constructVariadic(
           DynTypedMatcher::VO_AllOf,
-          ast_type_traits::ASTNodeKind::getFromNodeKind<T>(),
+          ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<T>(),
           std::move(DynMatchers))
           .template unconditionalConvertTo<T>());
 }
@@ -1583,9 +1604,10 @@ public:
   }
 
 private:
-  static ast_type_traits::DynTypedNode
+  static ento::ast_graph_type_traits::DynTypedNode
   extract(const NestedNameSpecifierLoc &Loc) {
-    return ast_type_traits::DynTypedNode::create(*Loc.getNestedNameSpecifier());
+    return ento::ast_graph_type_traits::DynTypedNode::create(
+        *Loc.getNestedNameSpecifier());
   }
 };
 
@@ -1603,7 +1625,8 @@ public:
     if (!Node)
       return false;
     return this->InnerMatcher.matches(
-        ast_type_traits::DynTypedNode::create(Node.getType()), Finder, Builder);
+        ento::ast_graph_type_traits::DynTypedNode::create(Node.getType()),
+        Finder, Builder);
   }
 };
 
@@ -1624,7 +1647,7 @@ public:
     if (NextNode.isNull())
       return false;
     return this->InnerMatcher.matches(
-        ast_type_traits::DynTypedNode::create(NextNode), Finder, Builder);
+        ento::ast_graph_type_traits::DynTypedNode::create(NextNode), Finder, Builder);
   }
 
 private:
@@ -1648,7 +1671,7 @@ public:
     if (!NextNode)
       return false;
     return this->InnerMatcher.matches(
-        ast_type_traits::DynTypedNode::create(NextNode), Finder, Builder);
+        ento::ast_graph_type_traits::DynTypedNode::create(NextNode), Finder, Builder);
   }
 
 private:
@@ -1748,7 +1771,7 @@ struct NotEqualsBoundNodePredicate {
   }
 
   std::string ID;
-  ast_type_traits::DynTypedNode Node;
+  ento::ast_graph_type_traits::DynTypedNode Node;
 };
 
 template <typename Ty>

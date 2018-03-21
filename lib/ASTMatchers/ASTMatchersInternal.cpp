@@ -50,24 +50,24 @@ AST_MATCHER_P(ObjCMessageExpr, hasAnySelectorMatcher, std::vector<std::string>,
 
 namespace internal {
 
-bool NotUnaryOperator(const ast_type_traits::DynTypedNode &DynNode,
+bool NotUnaryOperator(const ento::ast_graph_type_traits::DynTypedNode &DynNode,
                       ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder,
                       ArrayRef<DynTypedMatcher> InnerMatchers);
 
-bool AllOfVariadicOperator(const ast_type_traits::DynTypedNode &DynNode,
-                           ASTMatchFinder *Finder,
-                           BoundNodesTreeBuilder *Builder,
-                           ArrayRef<DynTypedMatcher> InnerMatchers);
+bool AllOfVariadicOperator(
+    const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+    ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder,
+    ArrayRef<DynTypedMatcher> InnerMatchers);
 
-bool EachOfVariadicOperator(const ast_type_traits::DynTypedNode &DynNode,
-                            ASTMatchFinder *Finder,
-                            BoundNodesTreeBuilder *Builder,
-                            ArrayRef<DynTypedMatcher> InnerMatchers);
+bool EachOfVariadicOperator(
+    const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+    ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder,
+    ArrayRef<DynTypedMatcher> InnerMatchers);
 
-bool AnyOfVariadicOperator(const ast_type_traits::DynTypedNode &DynNode,
-                           ASTMatchFinder *Finder,
-                           BoundNodesTreeBuilder *Builder,
-                           ArrayRef<DynTypedMatcher> InnerMatchers);
+bool AnyOfVariadicOperator(
+    const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+    ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder,
+    ArrayRef<DynTypedMatcher> InnerMatchers);
 
 void BoundNodesTreeBuilder::visitMatches(Visitor *ResultVisitor) {
   if (Bindings.empty())
@@ -79,9 +79,10 @@ void BoundNodesTreeBuilder::visitMatches(Visitor *ResultVisitor) {
 
 namespace {
 
-using VariadicOperatorFunction = bool (*)(
-    const ast_type_traits::DynTypedNode &DynNode, ASTMatchFinder *Finder,
-    BoundNodesTreeBuilder *Builder, ArrayRef<DynTypedMatcher> InnerMatchers);
+using VariadicOperatorFunction =
+    bool (*)(const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+             ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder,
+             ArrayRef<DynTypedMatcher> InnerMatchers);
 
 template <VariadicOperatorFunction Func>
 class VariadicMatcher : public DynMatcherInterface {
@@ -89,7 +90,7 @@ public:
   VariadicMatcher(std::vector<DynTypedMatcher> InnerMatchers)
       : InnerMatchers(std::move(InnerMatchers)) {}
 
-  bool dynMatches(const ast_type_traits::DynTypedNode &DynNode,
+  bool dynMatches(const ento::ast_graph_type_traits::DynTypedNode &DynNode,
                   ASTMatchFinder *Finder,
                   BoundNodesTreeBuilder *Builder) const override {
     return Func(DynNode, Finder, Builder, InnerMatchers);
@@ -105,11 +106,12 @@ public:
                IntrusiveRefCntPtr<DynMatcherInterface> InnerMatcher)
       : ID(ID), InnerMatcher(std::move(InnerMatcher)) {}
 
-  bool dynMatches(const ast_type_traits::DynTypedNode &DynNode,
+  bool dynMatches(const ento::ast_graph_type_traits::DynTypedNode &DynNode,
                   ASTMatchFinder *Finder,
                   BoundNodesTreeBuilder *Builder) const override {
     bool Result = InnerMatcher->dynMatches(DynNode, Finder, Builder);
-    if (Result) Builder->setBinding(ID, DynNode);
+    if (Result)
+      Builder->setBinding(ID, DynNode);
     return Result;
   }
 
@@ -129,8 +131,8 @@ public:
     Retain(); // Reference count will never become zero.
   }
 
-  bool dynMatches(const ast_type_traits::DynTypedNode &, ASTMatchFinder *,
-                  BoundNodesTreeBuilder *) const override {
+  bool dynMatches(const ento::ast_graph_type_traits::DynTypedNode &,
+                  ASTMatchFinder *, BoundNodesTreeBuilder *) const override {
     return true;
   }
 };
@@ -141,7 +143,7 @@ static llvm::ManagedStatic<TrueMatcherImpl> TrueMatcherInstance;
 
 DynTypedMatcher DynTypedMatcher::constructVariadic(
     DynTypedMatcher::VariadicOperator Op,
-    ast_type_traits::ASTNodeKind SupportedKind,
+    ento::ast_graph_type_traits::ASTGraphNodeKind SupportedKind,
     std::vector<DynTypedMatcher> InnerMatchers) {
   assert(!InnerMatchers.empty() && "Array must not be empty.");
   assert(std::all_of(InnerMatchers.begin(), InnerMatchers.end(),
@@ -163,8 +165,9 @@ DynTypedMatcher DynTypedMatcher::constructVariadic(
     // invalid types earlier and we can elide the kind checks inside the
     // matcher.
     for (auto &IM : InnerMatchers) {
-      RestrictKind = ast_type_traits::ASTNodeKind::getMostDerivedType(
-          RestrictKind, IM.RestrictKind);
+      RestrictKind =
+          ento::ast_graph_type_traits::ASTGraphNodeKind::getMostDerivedType(
+              RestrictKind, IM.RestrictKind);
     }
     return DynTypedMatcher(
         SupportedKind, RestrictKind,
@@ -185,33 +188,35 @@ DynTypedMatcher DynTypedMatcher::constructVariadic(
     // vector.
     return DynTypedMatcher(
         SupportedKind, RestrictKind,
-        new VariadicMatcher<NotUnaryOperator>(std::move(InnerMatchers)));
+        new VariadicMatcher<NotUnaryOperator>(std::move(InnerMatchers)),
+          /* IsNegative= */true);
   }
   llvm_unreachable("Invalid Op value.");
 }
 
 DynTypedMatcher DynTypedMatcher::trueMatcher(
-    ast_type_traits::ASTNodeKind NodeKind) {
+    ento::ast_graph_type_traits::ASTGraphNodeKind NodeKind) {
   return DynTypedMatcher(NodeKind, NodeKind, &*TrueMatcherInstance);
 }
 
 bool DynTypedMatcher::canMatchNodesOfKind(
-    ast_type_traits::ASTNodeKind Kind) const {
+    ento::ast_graph_type_traits::ASTGraphNodeKind Kind) const {
   return RestrictKind.isBaseOf(Kind);
 }
 
 DynTypedMatcher DynTypedMatcher::dynCastTo(
-    const ast_type_traits::ASTNodeKind Kind) const {
+    const ento::ast_graph_type_traits::ASTGraphNodeKind Kind) const {
   auto Copy = *this;
   Copy.SupportedKind = Kind;
   Copy.RestrictKind =
-      ast_type_traits::ASTNodeKind::getMostDerivedType(Kind, RestrictKind);
+      ento::ast_graph_type_traits::ASTGraphNodeKind::getMostDerivedType(
+          Kind, RestrictKind);
   return Copy;
 }
 
-bool DynTypedMatcher::matches(const ast_type_traits::DynTypedNode &DynNode,
-                              ASTMatchFinder *Finder,
-                              BoundNodesTreeBuilder *Builder) const {
+bool DynTypedMatcher::matches(
+    const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+    ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder) const {
   if (RestrictKind.isBaseOf(DynNode.getNodeKind()) &&
       Implementation->dynMatches(DynNode, Finder, Builder)) {
     return true;
@@ -224,8 +229,8 @@ bool DynTypedMatcher::matches(const ast_type_traits::DynTypedNode &DynNode,
 }
 
 bool DynTypedMatcher::matchesNoKindCheck(
-    const ast_type_traits::DynTypedNode &DynNode, ASTMatchFinder *Finder,
-    BoundNodesTreeBuilder *Builder) const {
+    const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+    ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder) const {
   assert(RestrictKind.isBaseOf(DynNode.getNodeKind()));
   if (Implementation->dynMatches(DynNode, Finder, Builder)) {
     return true;
@@ -245,10 +250,11 @@ llvm::Optional<DynTypedMatcher> DynTypedMatcher::tryBind(StringRef ID) const {
   return std::move(Result);
 }
 
-bool DynTypedMatcher::canConvertTo(ast_type_traits::ASTNodeKind To) const {
+bool DynTypedMatcher::canConvertTo(
+    ento::ast_graph_type_traits::ASTGraphNodeKind To) const {
   const auto From = getSupportedKind();
-  auto QualKind = ast_type_traits::ASTNodeKind::getFromNodeKind<QualType>();
-  auto TypeKind = ast_type_traits::ASTNodeKind::getFromNodeKind<Type>();
+  auto QualKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<QualType>();
+  auto TypeKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<Type>();
   /// Mimic the implicit conversions of Matcher<>.
   /// - From Matcher<Type> to Matcher<QualType>
   if (From.isSame(TypeKind) && To.isSame(QualKind)) return true;
@@ -260,7 +266,7 @@ void BoundNodesTreeBuilder::addMatch(const BoundNodesTreeBuilder &Other) {
   Bindings.append(Other.Bindings.begin(), Other.Bindings.end());
 }
 
-bool NotUnaryOperator(const ast_type_traits::DynTypedNode &DynNode,
+bool NotUnaryOperator(const ento::ast_graph_type_traits::DynTypedNode &DynNode,
                       ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder,
                       ArrayRef<DynTypedMatcher> InnerMatchers) {
   if (InnerMatchers.size() != 1)
@@ -280,10 +286,10 @@ bool NotUnaryOperator(const ast_type_traits::DynTypedNode &DynNode,
   return !InnerMatchers[0].matches(DynNode, Finder, &Discard);
 }
 
-bool AllOfVariadicOperator(const ast_type_traits::DynTypedNode &DynNode,
-                           ASTMatchFinder *Finder,
-                           BoundNodesTreeBuilder *Builder,
-                           ArrayRef<DynTypedMatcher> InnerMatchers) {
+bool AllOfVariadicOperator(
+    const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+    ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder,
+    ArrayRef<DynTypedMatcher> InnerMatchers) {
   // allOf leads to one matcher for each alternative in the first
   // matcher combined with each alternative in the second matcher.
   // Thus, we can reuse the same Builder.
@@ -294,10 +300,10 @@ bool AllOfVariadicOperator(const ast_type_traits::DynTypedNode &DynNode,
   return true;
 }
 
-bool EachOfVariadicOperator(const ast_type_traits::DynTypedNode &DynNode,
-                            ASTMatchFinder *Finder,
-                            BoundNodesTreeBuilder *Builder,
-                            ArrayRef<DynTypedMatcher> InnerMatchers) {
+bool EachOfVariadicOperator(
+    const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+    ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder,
+    ArrayRef<DynTypedMatcher> InnerMatchers) {
   BoundNodesTreeBuilder Result;
   bool Matched = false;
   for (const DynTypedMatcher &InnerMatcher : InnerMatchers) {
@@ -311,10 +317,10 @@ bool EachOfVariadicOperator(const ast_type_traits::DynTypedNode &DynNode,
   return Matched;
 }
 
-bool AnyOfVariadicOperator(const ast_type_traits::DynTypedNode &DynNode,
-                           ASTMatchFinder *Finder,
-                           BoundNodesTreeBuilder *Builder,
-                           ArrayRef<DynTypedMatcher> InnerMatchers) {
+bool AnyOfVariadicOperator(
+    const ento::ast_graph_type_traits::DynTypedNode &DynNode,
+    ASTMatchFinder *Finder, BoundNodesTreeBuilder *Builder,
+    ArrayRef<DynTypedMatcher> InnerMatchers) {
   for (const DynTypedMatcher &InnerMatcher : InnerMatchers) {
     BoundNodesTreeBuilder Result = *Builder;
     if (InnerMatcher.matches(DynNode, Finder, &Result)) {

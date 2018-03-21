@@ -74,6 +74,7 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/TypeTraits.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -149,6 +150,7 @@ using TypeLocMatcher = internal::Matcher<TypeLoc>;
 using NestedNameSpecifierMatcher = internal::Matcher<NestedNameSpecifier>;
 using NestedNameSpecifierLocMatcher = internal::Matcher<NestedNameSpecifierLoc>;
 using CXXCtorInitializerMatcher = internal::Matcher<CXXCtorInitializer>;
+using ExplodedNodeMatcher = internal::Matcher<ento::ExplodedNode>;
 /// @}
 
 /// Matches any node.
@@ -3859,7 +3861,7 @@ AST_POLYMORPHIC_MATCHER_P(equalsBoundNode,
   // they're ever reused.
   internal::NotEqualsBoundNodePredicate Predicate;
   Predicate.ID = ID;
-  Predicate.Node = ast_type_traits::DynTypedNode::create(Node);
+  Predicate.Node = ento::ast_graph_type_traits::DynTypedNode::create(Node);
   return Builder->removeBindings(Predicate);
 }
 

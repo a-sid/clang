@@ -32,7 +32,7 @@
 #include <utility>
 #include <vector>
 
-using namespace clang::ast_type_traits;
+using namespace clang::ento::ast_graph_type_traits;
 
 namespace clang {
 namespace ast_matchers {
@@ -494,9 +494,9 @@ llvm::Optional<MatcherCtor> Registry::lookupMatcherCtor(StringRef MatcherName) {
 }
 
 static llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
-                                     const std::set<ASTNodeKind> &KS) {
+                                     const std::set<ASTGraphNodeKind> &KS) {
   unsigned Count = 0;
-  for (std::set<ASTNodeKind>::const_iterator I = KS.begin(), E = KS.end();
+  for (std::set<ASTGraphNodeKind>::const_iterator I = KS.begin(), E = KS.end();
        I != E; ++I) {
     if (I != KS.begin())
       OS << "|";
@@ -511,14 +511,14 @@ static llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
 
 std::vector<ArgKind> Registry::getAcceptedCompletionTypes(
     ArrayRef<std::pair<MatcherCtor, unsigned>> Context) {
-  ASTNodeKind InitialTypes[] = {
-      ASTNodeKind::getFromNodeKind<Decl>(),
-      ASTNodeKind::getFromNodeKind<QualType>(),
-      ASTNodeKind::getFromNodeKind<Type>(),
-      ASTNodeKind::getFromNodeKind<Stmt>(),
-      ASTNodeKind::getFromNodeKind<NestedNameSpecifier>(),
-      ASTNodeKind::getFromNodeKind<NestedNameSpecifierLoc>(),
-      ASTNodeKind::getFromNodeKind<TypeLoc>()};
+  ASTGraphNodeKind InitialTypes[] = {
+      ASTGraphNodeKind::getFromNodeKind<Decl>(),
+      ASTGraphNodeKind::getFromNodeKind<QualType>(),
+      ASTGraphNodeKind::getFromNodeKind<Type>(),
+      ASTGraphNodeKind::getFromNodeKind<Stmt>(),
+      ASTGraphNodeKind::getFromNodeKind<NestedNameSpecifier>(),
+      ASTGraphNodeKind::getFromNodeKind<NestedNameSpecifierLoc>(),
+      ASTGraphNodeKind::getFromNodeKind<TypeLoc>()};
 
   // Starting with the above seed of acceptable top-level matcher types, compute
   // the acceptable type set for the argument indicated by each context element.
@@ -548,7 +548,7 @@ Registry::getMatcherCompletions(ArrayRef<ArgKind> AcceptedTypes) {
     const MatcherDescriptor& Matcher = *M.getValue();
     StringRef Name = M.getKey();
 
-    std::set<ASTNodeKind> RetKinds;
+    std::set<ASTGraphNodeKind> RetKinds;
     unsigned NumArgs = Matcher.isVariadic() ? 1 : Matcher.getNumArgs();
     bool IsPolymorphic = Matcher.isPolymorphic();
     std::vector<std::vector<ArgKind>> ArgsKinds(NumArgs);
@@ -557,7 +557,7 @@ Registry::getMatcherCompletions(ArrayRef<ArgKind> AcceptedTypes) {
       if (Kind.getArgKind() != Kind.AK_Matcher)
         continue;
       unsigned Specificity;
-      ASTNodeKind LeastDerivedKind;
+      ASTGraphNodeKind LeastDerivedKind;
       if (Matcher.isConvertibleTo(Kind.getMatcherKind(), &Specificity,
                                   &LeastDerivedKind)) {
         if (MaxSpecificity < Specificity)
@@ -583,7 +583,7 @@ Registry::getMatcherCompletions(ArrayRef<ArgKind> AcceptedTypes) {
             OS << ", ";
 
           bool FirstArgKind = true;
-          std::set<ASTNodeKind> MatcherKinds;
+          std::set<ASTGraphNodeKind> MatcherKinds;
           // Two steps. First all non-matchers, then matchers only.
           for (const ArgKind &AK : Arg) {
             if (AK.getArgKind() == ArgKind::AK_Matcher) {
