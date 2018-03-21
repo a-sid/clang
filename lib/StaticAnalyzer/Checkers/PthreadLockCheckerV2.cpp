@@ -244,20 +244,8 @@ private:
 
   DynTypedPathMatcher Implementation;
 }; // class PathMatcher
-/*
-class ExplodedNodeMatcher {
-public:
-  virtual bool matches(const ExplodedNode *Node, GraphMatchFinder *Finder,
-                       GraphBoundNodesTreeBuilder *Builder) const = 0;
-  virtual bool isNegative() const = 0;
-  bool isPositive() const { return !isNegative(); }
-  virtual ~ExplodedNodeMatcher() = default;
 
-private:
-};
 
-class PathMatcher;
-*/
 template <typename NodeTy> class BindEntry {
   GraphBoundNodeMap BoundItems;
   MatcherStateID StateID = 0;
@@ -285,62 +273,8 @@ public:
 
   PathMatcher<NodeTy> *Matcher;
 };
-/*
-class PathMatcher {
-  using MatcherVector = std::vector<ExplodedNodeMatcher *>;
-  MatcherVector InnerMatchers;
 
-public:
-  PathMatcher(MatcherVector &&InnerMatchers) : InnerMatchers(InnerMatchers) {}
-  PathMatcher(std::initializer_list<ExplodedNodeMatcher *> Matchers)
-      : InnerMatchers(Matchers) {}
 
-  bool isSingle() const { return InnerMatchers.size() == 1; }
-
-  MatchAction matches(const ExplodedNode *Node, GraphMatchFinder *Finder,
-                      GraphBoundNodesTreeBuilder *Builder, unsigned StateID) {
-    size_t Index = matcherIndexByStateID(StateID);
-    bool NegMatch = false;
-    std::tie(Index, NegMatch) = matchNotMatchers(Index, Node, Finder, Builder);
-    if (!NegMatch) {
-      if (StateID == 0)
-        return MatchAction::RejectForever;
-      else
-        return MatchAction::RejectSingle;
-    }
-
-    bool IsNodeLast = Node->succ_empty();
-    // Negative matchers are matching.
-    if (Index == InnerMatchers.size()) {
-      if (IsNodeLast)
-        // If the node is last and no matchers remain, the path match
-        // is accepted.
-        return MatchAction::Accept;
-      else
-        // If the node is not last but all final negative matchers match,
-        // continue matching until the final node is met.
-        return MatchAction::Pass;
-    }
-
-    // Next matcher should exist and it should be positive.
-    assert(InnerMatchers[Index]->isPositive());
-    bool IsLastMatcher = Index == InnerMatchers.size() - 1;
-    if (IsNodeLast && !IsLastMatcher)
-      return MatchAction::RejectSingle;
-
-    bool PositiveMatch = InnerMatchers[Index]->matches(Node, Finder, Builder);
-    if (PositiveMatch) {
-      if (IsLastMatcher)
-        return MatchAction::Accept;
-      else
-        return MatchAction::Advance;
-    } else {
-      return MatchAction::Pass;
-    }
-    llvm_unreachable("The result should be already defined and returned!");
-  }
-};
-*/
 class PSMatchesCallback : public MatchFinder::MatchCallback {
 public:
   void run(const MatchFinder::MatchResult &Result) override {
@@ -350,30 +284,7 @@ public:
   SmallVector<BoundNodes, 1> Nodes;
   bool HasMatches = false;
 };
-/*
-template <typename MatcherTy>
-class StatementNodeMatcher : public ExplodedNodeMatcher {
-  MatcherTy InnerMatcher;
 
-public:
-  StatementNodeMatcher(MatcherTy Inner) : InnerMatcher(Inner) {}
-  virtual bool matches(const ExplodedNode *Node, GraphMatchFinder *Finder,
-                       GraphBoundNodesTreeBuilder *Builder) const override;
-  virtual bool isNegative() const override { return false; }
-};
-
-class NotMatcher : public ExplodedNodeMatcher {
-  ExplodedNodeMatcher *InnerMatcher;
-
-public:
-  NotMatcher(ExplodedNodeMatcher *Inner) : InnerMatcher(Inner) {}
-  virtual bool matches(const ExplodedNode *Node, GraphMatchFinder *Finder,
-                       GraphBoundNodesTreeBuilder *Builder) const override {
-    return !InnerMatcher->matches(Node, Finder, Builder);
-  }
-  virtual bool isNegative() const override { return true; }
-};
-*/
 using ExplodedNodeMatcher = Matcher<ExplodedNode>;
 
 VariadicAllOfMatcher<ExplodedNode> explodedNode;
@@ -383,7 +294,7 @@ AST_MATCHER_P(ExplodedNode, statementNode, StatementMatcher, Inner) {
     return Inner.matches(*StmtPP->getStmt(), Finder, Builder);
   return false;
 }
-/*
+
 #define PROGRAM_POINT_MATCHER(Type, Name)                                      \
   AST_MATCHER_P(ExplodedNode, Name, ExplodedNodeMatcher, Inner) {              \
     if (auto PP = Node.getLocationAs<Type>())                                  \
@@ -391,19 +302,10 @@ AST_MATCHER_P(ExplodedNode, statementNode, StatementMatcher, Inner) {
     return false;                                                              \
   }
 
-PROGRAM_POINT_MATCHER(PreStmt, preStmtNode)*/
+PROGRAM_POINT_MATCHER(PreStmt, preStmtNode)
+PROGRAM_POINT_MATCHER(PostStmt, postStmtNode)
 
-AST_MATCHER_P(ExplodedNode, preStmtNode, ExplodedNodeMatcher, Inner) {
-  if (Node.getLocationAs<PreStmt>())
-    return Inner.matches(Node, Finder, Builder);
-  return false;
-}
-
-AST_MATCHER_P(ExplodedNode, postStmtNode, ExplodedNodeMatcher, Inner) {
-  if (Node.getLocationAs<PostStmt>())
-    return Inner.matches(Node, Finder, Builder);
-  return false;
-}
+#undef PROGRAM_POINT_MATCHER
 
 AST_MATCHER_P(ExplodedNode, callEnterNode, StatementMatcher, Inner) {
   if (auto CallEnterPP = Node.getLocationAs<CallEnter>())
@@ -484,16 +386,6 @@ struct VariadicOperatorPathMatcherFunc {
   }
 };
 
-/*
-template <typename MatcherTy>
-ExplodedNodeMatcher *statementNode(MatcherTy Inner) {
-  return new StatementNodeMatcher<MatcherTy>(Inner);
-}
-
-ExplodedNodeMatcher *unlessPS(ExplodedNodeMatcher *Inner) {
-  return new NotMatcher(Inner);
-}
-*/
 
 class PathMatchCallback;
 
@@ -666,22 +558,7 @@ BindEntry<NodeTy>::matchNewNode(const NodeTy &Node, GraphMatchFinder *Finder,
                                 GraphBoundNodesTreeBuilder *Builder) {
   return Matcher->matches(Node, Finder, Builder, StateID);
 }
-/*
-template <typename MatcherTy>
-bool StatementNodeMatcher<MatcherTy>::matches(
-    const ExplodedNode *Node, GraphMatchFinder *Finder,
-    GraphBoundNodesTreeBuilder *Builder) const {
-  if (const Stmt *S = PathDiagnosticLocation::getStmt(Node)) {
-    MatchFinder ASTFinder;
-    PSMatchesCallback BindCollector;
-    ASTFinder.addMatcher(InnerMatcher, &BindCollector);
-    ASTFinder.match(*S, Finder->getASTContext());
-    // FIXME: add bindings
-    return BindCollector.HasMatches;
-  }
-  return false;
-}
-*/
+
 void GraphMatchFinder::advance(const ExplodedNode *Pred,
                                const ExplodedNode *Succ) {
   // Advance and remove unmatched items if needed.
