@@ -94,7 +94,8 @@ public:
 class MemRegion : public llvm::FoldingSetNode {
 public:
   enum Kind {
-#define REGION(Id, Parent) Id ## Kind,
+#define REGION(Id, Parent) Id##Kind,
+#define ABSTRACT_REGION(Id, Parent) REGION(Id, Parent)
 #define REGION_RANGE(Id, First, Last) BEGIN_##Id = First, END_##Id = Last,
 #include "clang/StaticAnalyzer/Core/PathSensitive/Regions.def"
   };
