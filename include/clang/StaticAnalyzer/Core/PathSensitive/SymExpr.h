@@ -33,6 +33,7 @@ class SymExpr : public llvm::FoldingSetNode {
 public:
   enum Kind {
 #define SYMBOL(Id, Parent) Id##Kind,
+#define ABSTRACT_SYMBOL(Id, Parent) SYMBOL(Id, Parent)
 #define SYMBOL_RANGE(Id, First, Last) BEGIN_##Id = First, END_##Id = Last,
 #include "clang/StaticAnalyzer/Core/PathSensitive/Symbols.def"
   };
