@@ -1,4 +1,4 @@
-//===--- PthreadLockChecker.cpp - Check for locking problems ---*- C++ -*--===//
+//===- ChrootCheckerV2.cpp ------ Basic security checks ---------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,8 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines PthreadLockChecker, a simple lock -> unlock checker.
-// Also handles XNU locks, which behave similarly enough to share code.
+//  This file defines chroot checker, which checks improper use of chroot.
+//  This version of the checker is based on path-sensitive AST Matchers and uses
+//  traversal on the ExplodedGraph.
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,44 +34,6 @@ using namespace ast_matchers;
 using namespace internal;
 
 namespace {
-
-struct LockState {
-  enum Kind {
-    Destroyed,
-    Locked,
-    Unlocked,
-    UntouchedAndPossiblyDestroyed,
-    UnlockedAndPossiblyDestroyed
-  } K;
-
-private:
-  LockState(Kind K) : K(K) {}
-
-public:
-  static LockState getLocked() { return LockState(Locked); }
-  static LockState getUnlocked() { return LockState(Unlocked); }
-  static LockState getDestroyed() { return LockState(Destroyed); }
-  static LockState getUntouchedAndPossiblyDestroyed() {
-    return LockState(UntouchedAndPossiblyDestroyed);
-  }
-  static LockState getUnlockedAndPossiblyDestroyed() {
-    return LockState(UnlockedAndPossiblyDestroyed);
-  }
-
-  bool operator==(const LockState &X) const { return K == X.K; }
-
-  bool isLocked() const { return K == Locked; }
-  bool isUnlocked() const { return K == Unlocked; }
-  bool isDestroyed() const { return K == Destroyed; }
-  bool isUntouchedAndPossiblyDestroyed() const {
-    return K == UntouchedAndPossiblyDestroyed;
-  }
-  bool isUnlockedAndPossiblyDestroyed() const {
-    return K == UnlockedAndPossiblyDestroyed;
-  }
-
-  void Profile(llvm::FoldingSetNodeID &ID) const { ID.AddInteger(K); }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -675,32 +638,11 @@ auto LockMatcher =
             functionDecl(hasName("pthread_mutex_lock"))),
           hasArgValue(0,equalsBoundNode("mutex")))));
 */
-class PthreadLockCheckerV2 : public Checker<check::EndAnalysis> {
-  mutable std::unique_ptr<BugType> BT_doublelock;
-  mutable std::unique_ptr<BugType> BT_doubleunlock;
-  mutable std::unique_ptr<BugType> BT_destroylock;
-  mutable std::unique_ptr<BugType> BT_initlock;
-  mutable std::unique_ptr<BugType> BT_lor;
-  enum LockingSemantics { NotApplicable = 0, PthreadSemantics, XNUSemantics };
+class ChrootCheckerV2 : public Checker<check::EndAnalysis> {
 
 public:
   void checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
                         ExprEngine &Eng) const;
-  /*  void printState(raw_ostream &Out, ProgramStateRef State, const char *NL,
-                    const char *Sep) const override;
-
-    void AcquireLock(CheckerContext &C, const CallExpr *CE, SVal lock,
-                     bool isTryLock, enum LockingSemantics semantics) const;
-
-    void ReleaseLock(CheckerContext &C, const CallExpr *CE, SVal lock) const;
-    void DestroyLock(CheckerContext &C, const CallExpr *CE, SVal Lock,
-                     enum LockingSemantics semantics) const;
-    void InitLock(CheckerContext &C, const CallExpr *CE, SVal Lock) const;
-    void reportUseDestroyedBug(CheckerContext &C, const CallExpr *CE) const;
-    ProgramStateRef resolvePossiblyDestroyedMutex(ProgramStateRef state,
-                                                  const MemRegion *lockR,
-                                                  const SymbolRef *sym)
-    const;*/
 };
 } // end anonymous namespace
 
@@ -718,8 +660,8 @@ ProxyMatchCallback<CalleeTy> createProxyCallback(CalleeTy Callee) {
   return ProxyMatchCallback<CalleeTy>(Callee);
 }
 
-void PthreadLockCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
-                                            ExprEngine &Eng) const {
+void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
+                                       ExprEngine &Eng) const {
   ExplodedNode *Root = *G.roots_begin();
   const Decl *D = Root->getStackFrame()->getDecl();
   std::string FuncName;
@@ -745,6 +687,6 @@ void PthreadLockCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
   Finder.match(G, BR, Eng);
 }
 
-void ento::registerPthreadLockCheckerV2(CheckerManager &Mgr) {
-  Mgr.registerChecker<PthreadLockCheckerV2>();
+void ento::registerChrootCheckerV2(CheckerManager &Mgr) {
+  Mgr.registerChecker<ChrootCheckerV2>();
 }
