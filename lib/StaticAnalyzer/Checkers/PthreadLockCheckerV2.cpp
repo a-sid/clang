@@ -18,6 +18,7 @@
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/EGraphContext.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 
 #include "clang/ASTMatchers/ASTMatchFinder.h"
@@ -245,7 +246,6 @@ private:
   DynTypedPathMatcher Implementation;
 }; // class PathMatcher
 
-
 template <typename NodeTy> class BindEntry {
   GraphBoundNodeMap BoundItems;
   MatcherStateID StateID = 0;
@@ -273,7 +273,6 @@ public:
 
   PathMatcher<NodeTy> *Matcher;
 };
-
 
 class PSMatchesCallback : public MatchFinder::MatchCallback {
 public:
@@ -312,6 +311,19 @@ AST_MATCHER_P(ExplodedNode, callEnterNode, StatementMatcher, Inner) {
     if (const Stmt *CE = CallEnterPP->getCallExpr())
       return Inner.matches(*CE, Finder, Builder);
   return false;
+}
+
+VariadicDynCastAllOfMatcher<MemRegion, StringRegion> stringRegion;
+
+AST_MATCHER_P(Stmt, hasValue, Matcher<SVal>, Inner) {
+  EGraphContext *Context = Finder->getContext<EGraphContext>();
+  ProgramStateRef State = Context->getState();
+  SVal Res = State->getSVal(&Node, Context->getLocationContext());
+  return Inner.matches(Res, Finder, Builder);
+}
+
+AST_MATCHER_P(StringRegion, refersString, std::string, String) {
+  return Node.getStringLiteral()->getString() == String;
 }
 
 static bool isLastNode(const DynTypedNode &Node) {
@@ -386,7 +398,6 @@ struct VariadicOperatorPathMatcherFunc {
   }
 };
 
-
 class PathMatchCallback;
 
 using PathSensMatcher = PathMatcher<ExplodedNode>;
@@ -423,6 +434,11 @@ matchNotMatchers(size_t StartIndex, const DynTypedNode &Node, ASTContext &Ctx,
     // FIXME: design and implement this.
     CollectMatchesCallback Callback;
     Finder.addDynamicMatcher(Matchers[I], &Callback);
+    std::unique_ptr<EGraphContext> EGContext;
+    if (const ExplodedNode *ENode = Node.get<ExplodedNode>()) {
+      EGContext.reset(new EGraphContext(ENode));
+      Finder.addContext(EGContext.get());
+    }
     Finder.match(Node, Ctx);
     if (!Callback.HasMatches)
       // match(Matchers[I], Node.getUnchecked<T>(), Ctx);
@@ -491,6 +507,11 @@ MatchResult SequenceVariadicOperator(
   MatchFinder NodeFinder;
   CollectMatchesCallback CB;
   NodeFinder.addDynamicMatcher(InnerMatchers[Index], &CB);
+  std::unique_ptr<EGraphContext> EGContext;
+  if (const ExplodedNode *ENode = DynNode.get<ExplodedNode>()) {
+    EGContext.reset(new EGraphContext(ENode));
+    NodeFinder.addContext(EGContext.get());
+  }
   NodeFinder.match(DynNode, Finder->getASTContext());
   bool PositiveMatch =
       // InnerMatchers[Index].matches(DynNode, Finder->BasicFinder, Builder);
@@ -712,13 +733,14 @@ void PthreadLockCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
   StatementMatcher NotChdir =
       callExpr(unless(callee(functionDecl(hasName("::chdir")))));
   Finder.addMatcher(
-      hasSequence(postStmtNode(statementNode(
-                      callExpr(callee(functionDecl(hasName("::chroot")))))),
-                  unless(statementNode(
-                      callExpr(callee(functionDecl(hasName("::chdir"))),
-                               hasArgument(0, stringLiteral(hasSize(1)))))),
-                  explodedNode(anyOf(postStmtNode(statementNode(NotChdir)),
-                                     callEnterNode(NotChdir)))),
+      hasSequence(
+          postStmtNode(statementNode(
+              callExpr(callee(functionDecl(hasName("::chroot")))))),
+          unless(statementNode(callExpr(
+              callee(functionDecl(hasName("::chdir"))),
+              hasArgument(0, hasValue(stringRegion(refersString("/"))))))),
+          explodedNode(anyOf(postStmtNode(statementNode(NotChdir)),
+                             callEnterNode(NotChdir)))),
       &Callback);
   Finder.match(G, BR, Eng);
 }

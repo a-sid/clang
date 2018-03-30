@@ -194,6 +194,10 @@ public:
   /// Finds all matches in the given AST.
   void matchAST(ASTContext &Context);
 
+  template <typename ContextTy> void addContext(ContextTy *Context) {
+    ContextMap[ContextTy::getTag()] = Context;
+  }
+
   /// Registers a callback to notify the end of parsing.
   ///
   /// The provided closure is called after parsing is done, before the AST is
@@ -225,6 +229,8 @@ private:
 
   /// Called when parsing is done.
   ParsingDoneTestCallback *ParsingDone;
+
+  internal::ASTMatchFinder::ContextMapTy ContextMap;
 };
 
 /// Returns the results of matching \p Matcher on \p Node.
