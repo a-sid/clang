@@ -25,7 +25,6 @@
 #include "clang/Basic/LLVM.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/MemRegion.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SymExpr.h"
 #include "llvm/ADT/DenseMapInfo.h"
@@ -42,6 +41,7 @@ struct PrintingPolicy;
 
 namespace ento {
 
+class ProgramState;
 
 namespace ast_graph_type_traits {
 
@@ -65,11 +65,11 @@ public:
   static ASTGraphNodeKind getFromNode(const Decl &D);
   static ASTGraphNodeKind getFromNode(const Stmt &S);
   static ASTGraphNodeKind getFromNode(const Type &T);
-  static ASTGraphNodeKind getNodeKind(const ProgramState *State);
-  static ASTGraphNodeKind getNodeKind(SVal SV);
-  static ASTGraphNodeKind getFromNode(const ExplodedNode *N);
-  static ASTGraphNodeKind getNodeKind(const MemRegion *Region);
-  static ASTGraphNodeKind getNodeKind(SymbolRef Sym);
+  static ASTGraphNodeKind getFromNode(const ProgramState &State);
+  static ASTGraphNodeKind getFromNode(const SVal &SV);
+  static ASTGraphNodeKind getFromNode(const ExplodedNode &N);
+  static ASTGraphNodeKind getFromNode(const MemRegion &Region);
+  static ASTGraphNodeKind getFromNode(const SymExpr &Sym);
 
   /// \}
 
@@ -146,25 +146,22 @@ public:
     NKI_Decl,
 #define DECL(DERIVED, BASE) NKI_##DERIVED##Decl,
 #include "clang/AST/DeclNodes.inc"
-#undef DECL
     NKI_Stmt,
 #define STMT(DERIVED, BASE) NKI_##DERIVED,
 #include "clang/AST/StmtNodes.inc"
-#undef STMT
     NKI_Type,
 #define TYPE(DERIVED, BASE) NKI_##DERIVED##Type,
 #include "clang/AST/TypeNodes.def"
-#undef TYPE
     NKI_ExplodedNode,
     NKI_ProgramState,
     NKI_MemRegion,
 #define REGION(Id, Parent) NKI_##Id,
+#define ABSTRACT_REGION(Id, Parent) REGION(Id, Parent)
 #include "clang/StaticAnalyzer/Core/PathSensitive/Regions.def"
-#undef REGION
-    NKI_Symbol,
+    NKI_SymExpr,
 #define SYMBOL(Id, Parent) NKI_##Id,
+#define ABSTRACT_SYMBOL(Id, Parent) SYMBOL(Id, Parent)
 #include "clang/StaticAnalyzer/Core/PathSensitive/Symbols.def"
-#undef SYMBOL
 
     NKI_ExplodedGraph,
     NKI_CFG,
@@ -175,10 +172,6 @@ public:
 #define LOC_SVAL(Id, Parent) NKI_loc_##Id,
 #define NONLOC_SVAL(Id, Parent) NKI_nonloc_##Id,
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.def"
-#undef NONLOC_SVAL
-#undef LOC_SVAL
-#undef ABSTRACT_SVAL
-#undef BASIC_SVAL
 
     NKI_ProgramPoint,
 
@@ -238,6 +231,10 @@ KIND_TO_KIND_ID(Type)
 
 KIND_TO_KIND_ID(ExplodedNode)
 KIND_TO_KIND_ID(ProgramState)
+KIND_TO_KIND_ID(SVal)
+KIND_TO_KIND_ID(MemRegion)
+KIND_TO_KIND_ID(SymExpr)
+
 
 #define SVAL_KIND_TO_KIND_ID(Namespace, Class)                                 \
   template <> struct ASTGraphNodeKind::KindToKindId<Namespace::Class> {        \
@@ -249,18 +246,14 @@ KIND_TO_KIND_ID(ProgramState)
 #define LOC_SVAL(Id, Parent) SVAL_KIND_TO_KIND_ID(loc, Id)
 #define NONLOC_SVAL(Id, Parent) SVAL_KIND_TO_KIND_ID(nonloc, Id)
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.def"
-#undef NONLOC_SVAL
-#undef LOC_SVAL
-#undef ABSTRACT_SVAL
-#undef BASIC_SVAL
 
 #define REGION(Id, Parent) KIND_TO_KIND_ID(Id)
+#define ABSTRACT_REGION(Id, Parent) REGION(Id, Parent)
 #include "clang/StaticAnalyzer/Core/PathSensitive/Regions.def"
-#undef REGION
 
 #define SYMBOL(Id, Parent) KIND_TO_KIND_ID(Id)
+#define ABSTRACT_SYMBOL(Id, Parent) SYMBOL(Id, Parent)
 #include "clang/StaticAnalyzer/Core/PathSensitive/Symbols.def"
-#undef SYMBOL
 #undef SVAL_KIND_TO_KIND_ID
 
 KIND_TO_KIND_ID(ExplodedGraph)
@@ -503,7 +496,7 @@ private:
     static DynTypedNode create(const BaseT &Node) {
       DynTypedNode Result;
       Result.NodeKind = ASTGraphNodeKind::getFromNode(Node);
-      new (Result.Storage.buffer) BaseT(*Node);
+      new (Result.Storage.buffer) BaseT(Node);
       return Result;
     }
   };
