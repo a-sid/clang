@@ -144,6 +144,17 @@ inline const FunctionProtoType *getFunctionProtoType(const FunctionDecl &Node) {
   return Node.getType()->getAs<FunctionProtoType>();
 }
 
+template <typename SomeT> struct SValContent;
+
+template <> struct SValContent<ento::SymExpr> {
+  static const ento::SymExpr *get(ento::SVal SV) { return SV.getAsSymbol(); }
+};
+
+template <> struct SValContent<ento::MemRegion> {
+  static const ento::MemRegion *get(ento::SVal SV) { return SV.getAsRegion(); }
+};
+
+
 /// Internal version of BoundNodes. Holds all the bound nodes.
 class BoundNodesMap {
 public:
@@ -534,6 +545,17 @@ public:
             std::is_same<TypeT, Type>::value>::type* = nullptr)
       : Implementation(new TypeToQualType<TypeT>(Other)) {}
 
+  /// Implicitly converts \c Matcher<SymExpr> or \c Matcher<MemRegion> to
+  /// \c Matcher<SVal>.
+  template <typename SymbolOrRegionTy>
+  Matcher(const Matcher<SymbolOrRegionTy> &Other,
+          typename std::enable_if<
+              std::is_same<T, ento::SVal>::value &&
+              (std::is_same<SymbolOrRegionTy, ento::SymExpr>::value ||
+               std::is_same<SymbolOrRegionTy, ento::MemRegion>::value)>::type
+              * = nullptr)
+      : Implementation(new SymbolOrRegionToSVal<SymbolOrRegionTy>(Other)) {}
+
   /// Convert \c this into a \c Matcher<T> by applying dyn_cast<> to the
   /// argument.
   /// \c To must be a base class of \c T.
@@ -585,6 +607,24 @@ public:
     }
   };
 
+  /// \brief Allows the conversion of a \c Matcher<SymExpr> and
+  /// \c Matcher<MemRegion> to a \c Matcher<SVal>.
+  template <typename SymbolOrRegionTy>
+  class SymbolOrRegionToSVal : public WrapperMatcherInterface<ento::SVal> {
+  public:
+    SymbolOrRegionToSVal(const Matcher<SymbolOrRegionTy> &InnerMatcher)
+        : SymbolOrRegionToSVal::WrapperMatcherInterface(InnerMatcher) {}
+
+    bool matches(const ento::SVal &Node, ASTMatchFinder *Finder,
+                 BoundNodesTreeBuilder *Builder) const override {
+      if (auto Val = SValContent<SymbolOrRegionTy>::get(Node))
+        return this->InnerMatcher.matches(
+            ento::ast_graph_type_traits::DynTypedNode::create(*Val), Finder,
+            Builder);
+      return false;
+    }
+  };
+
 private:
   // For Matcher<T> <=> Matcher<U> conversions.
   template <typename U> friend class Matcher;
@@ -629,6 +669,29 @@ inline Matcher<QualType> DynTypedMatcher::convertTo<QualType>() const {
     return unconditionalConvertTo<Type>();
   }
   return unconditionalConvertTo<QualType>();
+}
+
+/// \brief Specialization of the conversion functions for QualType.
+///
+/// This specialization provides the Matcher<Type>->Matcher<QualType>
+/// conversion that the static API does.
+template <>
+inline Matcher<ento::SVal> DynTypedMatcher::convertTo<ento::SVal>() const {
+  assert(canConvertTo<ento::SVal>());
+  const ento::ast_graph_type_traits::ASTGraphNodeKind SourceKind =
+      getSupportedKind();
+  if (SourceKind.isSame(
+          ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<
+              ento::MemRegion>())) {
+    // We support implicit conversion from Matcher<MemRegion> to Matcher<SVal>
+    return unconditionalConvertTo<ento::MemRegion>();
+  } else if (SourceKind.isSame(
+               ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<
+                   ento::SymExpr>())) {
+         // We support implicit conversion from Matcher<Type> to Matcher<QualType>
+         return unconditionalConvertTo<ento::SymExpr>();
+    }
+  return unconditionalConvertTo<ento::SVal>();
 }
 
 /// Finds the first node in a range that matches the given matcher.
@@ -997,6 +1060,9 @@ public:
     AMM_ParentOnly
   };
 
+  using ContextMapTy = llvm::DenseMap<void *, void *>;
+
+  ASTMatchFinder(ContextMapTy *ContextMap = nullptr) : ContextMap(ContextMap) {}
   virtual ~ASTMatchFinder() = default;
 
   /// Returns true if the given class is directly or indirectly derived
@@ -1057,6 +1123,14 @@ public:
 
   virtual ASTContext &getASTContext() const = 0;
 
+  template <typename ContextTy> ContextTy *getContext() {
+    assert(ContextMap && "Context map is not set!");
+    void *Context = ContextMap->lookup(ContextTy::getTag());
+    assert(Context && "Context was not properly initialized!");
+    return static_cast<ContextTy *>(Context);
+  }
+
+
 protected:
   virtual bool matchesChildOf(const ento::ast_graph_type_traits::DynTypedNode &Node,
                               const DynTypedMatcher &Matcher,
@@ -1073,6 +1147,9 @@ protected:
                                  const DynTypedMatcher &Matcher,
                                  BoundNodesTreeBuilder *Builder,
                                  AncestorMatchMode MatchMode) = 0;
+
+private:
+  llvm::DenseMap<void *, void *> *ContextMap;
 };
 
 /// A type-list implementation.
