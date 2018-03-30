@@ -23,6 +23,7 @@ add_clang_library(clangStaticAnalyzerCheckers
   CheckSizeofPointer.cpp
   CheckerDocumentation.cpp
   ChrootChecker.cpp
+  ChrootCheckerV2.cpp
   ClangCheckers.cpp
   CloneChecker.cpp
   ConversionChecker.cpp
@@ -75,7 +76,6 @@ add_clang_library(clangStaticAnalyzerCheckers
   PointerArithChecker.cpp
   PointerSubChecker.cpp
   PthreadLockChecker.cpp
-  PthreadLockCheckerV2.cpp
   RetainCountChecker.cpp
   ReturnPointerRangeChecker.cpp
   ReturnUndefChecker.cpp
