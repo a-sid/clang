@@ -311,8 +311,10 @@ class MatchASTVisitor : public RecursiveASTVisitor<MatchASTVisitor>,
                         public ASTMatchFinder {
 public:
   MatchASTVisitor(const MatchFinder::MatchersByType *Matchers,
-                  const MatchFinder::MatchFinderOptions &Options)
-      : Matchers(Matchers), Options(Options), ActiveASTContext(nullptr) {}
+                  const MatchFinder::MatchFinderOptions &Options,
+                  ASTMatchFinder::ContextMapTy *ContextMap = nullptr)
+      : ASTMatchFinder(ContextMap), Matchers(Matchers), Options(Options),
+        ActiveASTContext(nullptr) {}
 
   ~MatchASTVisitor() override {
     if (Options.CheckProfiling) {
@@ -796,6 +798,8 @@ private:
   // Maps (matcher, node) -> the match result for memoization.
   typedef std::map<MatchKey, MemoizedMatchResult> MemoizationMap;
   MemoizationMap ResultCache;
+
+  ASTMatchFinder::ContextMapTy *ContextMap;
 };
 
 static CXXRecordDecl *
@@ -1025,7 +1029,9 @@ bool MatchFinder::addDynamicMatcher(const internal::DynTypedMatcher &NodeMatch,
     return true;
   } else if (NodeMatch.canConvertTo<ento::ExplodedNode>()) {
       addMatcher(NodeMatch.convertTo<ento::ExplodedNode>(), Action);
-  }
+  }/* else if (NodeMatch.canConvertTo<ento::SVal>()) {
+    addMatcher(NodeMatch.convertTo<ento::SVal>(), Action);
+  }*/
   return false;
 }
 
@@ -1035,13 +1041,13 @@ std::unique_ptr<ASTConsumer> MatchFinder::newASTConsumer() {
 
 void MatchFinder::match(const clang::ento::ast_graph_type_traits::DynTypedNode &Node,
                         ASTContext &Context) {
-  internal::MatchASTVisitor Visitor(&Matchers, Options);
+  internal::MatchASTVisitor Visitor(&Matchers, Options, &ContextMap);
   Visitor.set_active_ast_context(&Context);
   Visitor.match(Node);
 }
 
 void MatchFinder::matchAST(ASTContext &Context) {
-  internal::MatchASTVisitor Visitor(&Matchers, Options);
+  internal::MatchASTVisitor Visitor(&Matchers, Options, &ContextMap);
   Visitor.set_active_ast_context(&Context);
   Visitor.onStartOfTranslationUnit();
   Visitor.TraverseDecl(Context.getTranslationUnitDecl());

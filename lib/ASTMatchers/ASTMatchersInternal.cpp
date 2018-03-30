@@ -255,9 +255,15 @@ bool DynTypedMatcher::canConvertTo(
   const auto From = getSupportedKind();
   auto QualKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<QualType>();
   auto TypeKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<Type>();
+  auto SValKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<ento::SVal>();
+  auto SymKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<ento::SymExpr>();
+  auto RegionKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<ento::MemRegion>();
   /// Mimic the implicit conversions of Matcher<>.
   /// - From Matcher<Type> to Matcher<QualType>
-  if (From.isSame(TypeKind) && To.isSame(QualKind)) return true;
+  if (From.isSame(TypeKind) && To.isSame(QualKind))
+    return true;
+  if ((From.isSame(SymKind) || From.isSame(RegionKind)) && To.isSame(SValKind))
+    return true;
   /// - From Matcher<Base> to Matcher<Derived>
   return From.isBaseOf(To);
 }
