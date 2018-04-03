@@ -20,7 +20,7 @@
 #include "clang/ASTMatchers/ASTGraphTypeTraits.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 #include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
-#include "clang/StaticAnalyzer/Matchers/PathMatcherInternals.h"
+#include "clang/StaticAnalyzer/Matchers/GraphMatcherInternals.h"
 
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
