@@ -1,4 +1,4 @@
-//===- PathMatchersInternal.h - Structural query framework ------*- C++ -*-===//
+//===- GraphMatchersInternal.h - Structural query framework ------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,10 +14,11 @@
 //  identifying the current state.
 //  FIXME: We have to unify this code with ASTMatcherInternals.h after it
 //  stopped being a sandbox.
+//
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_ASTMATCHERS_PATHMATCHERSINTERNAL_H
-#define LLVM_CLANG_ASTMATCHERS_PATHMATCHERSINTERNAL_H
+#ifndef LLVM_CLANG_ASTMATCHERS_GRAPHMATCHERSINTERNAL_H
+#define LLVM_CLANG_ASTMATCHERS_GRAPHMATCHERSINTERNAL_H
 
 #include "clang/ASTMatchers/ASTGraphTypeTraits.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
@@ -358,4 +359,4 @@ BindEntry<NodeTy>::matchNewNode(const NodeTy &Node, GraphMatchFinder *Finder,
 
 } // end namespace clang
 
-#endif // LLVM_CLANG_ASTMATCHERS_PATHMATCHERSINTERNAL_H
+#endif // LLVM_CLANG_ASTMATCHERS_GRAPHMATCHERSINTERNAL_H
