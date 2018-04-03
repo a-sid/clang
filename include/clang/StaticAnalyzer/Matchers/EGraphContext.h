@@ -13,17 +13,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_ENTO_EGRAPHCONTEXT_H
-#define LLVM_CLANG_ENTO_EGRAPHCONTEXT_H
+#ifndef LLVM_CLANG_ENTO_MATCHERS_EGRAPHCONTEXT_H
+#define LLVM_CLANG_ENTO_MATCHERS_EGRAPHCONTEXT_H
 
-#include "clang/Basic/LLVM.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/MemRegion.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState_Fwd.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/SVals.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/SymExpr.h"
-#include "llvm/ADT/DenseMapInfo.h"
-#include "llvm/Support/AlignOf.h"
 
 namespace llvm {
 
@@ -87,4 +82,4 @@ private:
 } // end namespace ento
 } // end namepace clang
 
-#endif // LLVM_CLANG_ENTO_EGRAPHCONTEXT_H
+#endif // LLVM_CLANG_ENTO_MATCHERS_EGRAPHCONTEXT_H

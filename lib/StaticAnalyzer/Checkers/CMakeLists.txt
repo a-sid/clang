@@ -110,4 +110,5 @@ add_clang_library(clangStaticAnalyzerCheckers
   clangBasic
   clangLex
   clangStaticAnalyzerCore
+  clangStaticAnalyzerMatchers
   )
