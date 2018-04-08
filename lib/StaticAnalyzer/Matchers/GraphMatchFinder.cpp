@@ -28,8 +28,10 @@ void GraphMatchFinder::advance(const ExplodedNode *Pred,
                                const ExplodedNode *Succ) {
   // Advance and remove unmatched items if needed.
   size_t I = 0;
+  BoundMap.advance(Pred, Succ);
   while (I < Entries.size()) {
     BindEntry<ExplodedNode> &Entry = Entries[I];
+    GraphBoundNodesTreeBuilder Builder(BoundMap, Entry.getMatchID(), Succ);
     MatchResult MatchRes = Entry.matchNewNode(*Succ, this, &Builder);
     switch (MatchRes.Action) {
     case MatchAction::Advance:
@@ -57,10 +59,11 @@ void GraphMatchFinder::advance(const ExplodedNode *Pred,
   // Check if a new item (StateID == 0) should be added.
   for (auto &MatchItem : PathSensMatchers) {
     PathSensMatcher *Matcher = MatchItem.first;
+    auto Builder = GraphBoundNodesTreeBuilder::getTemporary(BoundMap, Succ);
     MatchResult Res = Matcher->matches(*Succ, this, &Builder, 0);
     if (Res.Action == MatchAction::Advance) {
-      GraphBoundNodeMap Bounds;
-      Entries.emplace_back(Matcher, Bounds, Res.NewStateID);
+      const auto &NewEntry = Entries.addMatch(Matcher, Res.NewStateID);
+      Builder.acceptTemporary(NewEntry.getMatchID());
     } else if (Res.Action == MatchAction::Accept) {
       auto *Callback = PathSensMatchers[Matcher];
       Callback->run();
