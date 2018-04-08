@@ -1,4 +1,4 @@
-//===- GraphMatchersInternal.h - Structural query framework ------*- C++ -*-===//
+//===- GraphMatchersInternal.h - Structural query framework ---*- C++ -*-=====//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -35,30 +35,35 @@ namespace ento {
 
 namespace path_matchers {
 
+class GraphBoundNodesMap;
 class GraphMatchFinder;
 
 namespace internal {
 
-class GraphBoundNodeMap;
-class GraphBoundNodesTreeBuilder {};
+typedef size_t MatcherID;
 
-class GraphBoundNodeMap
-    : public llvm::StringMap<ast_graph_type_traits::DynTypedNode> {
+class GraphBoundNodesTreeBuilder {
+  using NodeTy = const ExplodedNode *;
+
 public:
-  using BoundRecordType = StringMap<ast_graph_type_traits::DynTypedNode>;
-  using iterator = BoundRecordType::iterator;
-  using const_iterator = BoundRecordType::const_iterator;
-  /*
-    iterator begin() { return Bounds.begin(); }
-    iterator end() { return Bounds.end(); }
-    const_iterator begin() const { return Bounds.begin(); }
-    const_iterator end() const { return Bounds.end(); }
-  */
-  GraphBoundNodeMap advance(const ExplodedNode *N) { return *this; } // FIXME
+  GraphBoundNodesTreeBuilder(GraphBoundNodesMap &NodeMap, MatcherID CurrentID,
+                             NodeTy CurrentNode)
+      : Bounds(NodeMap), CurrentID(CurrentID), CurrentNode(CurrentNode) {}
+
+  static GraphBoundNodesTreeBuilder getTemporary(GraphBoundNodesMap &NodeMap,
+                                                 NodeTy CurrentNode) {
+    return GraphBoundNodesTreeBuilder(NodeMap, TemporaryID, CurrentNode);
+  }
+
+  void acceptTemporary(MatcherID NewID);
+
+  void addMatches(const ast_matchers::BoundNodes &Nodes);
 
 private:
-  // FoldingSet<ASTGraphNode> Allocator;
-  llvm::DenseMap<const ExplodedNode *, BoundRecordType> Bounds;
+  GraphBoundNodesMap &Bounds;
+  MatcherID CurrentID;
+  NodeTy CurrentNode;
+  static constexpr MatcherID TemporaryID = -1;
 };
 
 typedef size_t MatcherStateID;
@@ -316,27 +321,21 @@ public:
 };
 
 template <typename NodeTy> class BindEntry {
-  GraphBoundNodeMap BoundItems;
   MatcherStateID StateID = 0;
+  MatcherID MatchID;
 
 public:
-  BindEntry(PathMatcher<NodeTy> *Matcher, const GraphBoundNodeMap &Initial,
-            MatcherStateID InitialID = 0)
-      : BoundItems(Initial), StateID(InitialID), Matcher(Matcher) {}
+  BindEntry(PathMatcher<NodeTy> *Matcher, MatcherStateID InitialID,
+            MatcherID MatchID)
+      : StateID(InitialID), MatchID(MatchID), Matcher(Matcher) {}
 
-  unsigned getStateID() { return StateID; }
+  MatcherStateID getStateID() const { return StateID; }
+  MatcherID getMatchID() const { return MatchID; }
 
   void advance() { ++StateID; }
   void advance(MatcherStateID NewStateID) { StateID = NewStateID; }
 
   void setStateID(MatcherStateID StateID) { this->StateID = StateID; }
-
-  BindEntry addBinding(StringRef Key,
-                       ento::ast_graph_type_traits::DynTypedNode Binding) {
-    BindEntry New = *this;
-    New.BoundItems.insert(std::make_pair(Key, Binding));
-    return New;
-  }
 
   MatchResult matchNewNode(const NodeTy &Node, GraphMatchFinder *Finder,
                            GraphBoundNodesTreeBuilder *Builder);

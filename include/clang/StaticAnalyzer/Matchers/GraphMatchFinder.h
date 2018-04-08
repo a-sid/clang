@@ -40,11 +40,59 @@ class ExprEngine;
 
 namespace path_matchers {
 
+// template <typename NodeTy>
+class GraphBoundNodesMap {
+public:
+  using NodeTy = const ExplodedNode *;
+  using StoredItemTy = ast_matchers::internal::BoundNodesMap;
+  using GDMTy = std::map<internal::MatcherID, StoredItemTy>;
+  using GraphGDMTy = std::map<const ExplodedNode *, GDMTy>;
+
+  GraphBoundNodesMap() : GraphGDM{{nullptr, GDMTy()}} {}
+
+  void advance(NodeTy Pred, NodeTy Succ) {
+    assert(GraphGDM.find(Pred) != GraphGDM.end() &&
+           "Cannot advance from non-existing node");
+    assert(GraphGDM.find(Succ) == GraphGDM.end() &&
+           "Successor already was processed!");
+    GraphGDM[Succ] = GraphGDM[Pred];
+  }
+
+  GDMTy &getGDM(NodeTy Node) {
+    auto Found = GraphGDM.find(Node);
+    assert(Found != GraphGDM.end() && "Requested GDM for non-existing node!");
+    return Found->second;
+  }
+
+  void addMatches(NodeTy Node, internal::MatcherID MatchID,
+                  const ast_matchers::BoundNodes &Nodes) {
+    auto &GDM = getGDM(Node);
+    StoredItemTy &Entry = GDM[MatchID]; // Create if doesn't exist.
+    for (const auto &Item : Nodes.getMap())
+      Entry.addNode(Item.first, Item.second);
+  }
+
+private:
+  GraphGDMTy GraphGDM;
+};
+
 class GraphMatchFinder {
+  using EntryTy = internal::BindEntry<ExplodedNode>;
+
+  class EntriesTy : public std::vector<EntryTy> {
+    internal::MatcherID AddCounter = 0;
+
+  public:
+    const EntryTy &addMatch(internal::PathSensMatcher *Matcher,
+                            internal::MatcherStateID StateID) {
+      emplace_back(Matcher, StateID, AddCounter++);
+      return back();
+    }
+  };
+
   ASTContext &ASTCtx;
-  std::vector<internal::BindEntry<ExplodedNode>> Entries;
-  internal::GraphBoundNodesTreeBuilder Builder;
-  internal::GraphBoundNodeMap BoundMap;
+  EntriesTy Entries;
+  GraphBoundNodesMap BoundMap;
   std::map<internal::PathSensMatcher *, internal::PathMatchCallback *>
       PathSensMatchers;
 
@@ -61,7 +109,6 @@ public:
   ASTContext &getASTContext() { return ASTCtx; }
   GraphMatchFinder(ASTContext &ASTCtx) : ASTCtx(ASTCtx) {}
 };
-
 
 } // end namespace path_matchers
 

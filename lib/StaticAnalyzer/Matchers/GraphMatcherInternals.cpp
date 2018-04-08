@@ -27,6 +27,21 @@ namespace path_matchers {
 
 namespace internal {
 
+constexpr MatcherID GraphBoundNodesTreeBuilder::TemporaryID;
+
+void GraphBoundNodesTreeBuilder::addMatches(const BoundNodes &Nodes) {
+  Bounds.addMatches(CurrentNode, CurrentID, Nodes);
+}
+
+void GraphBoundNodesTreeBuilder::acceptTemporary(MatcherID NewID) {
+  auto &GDM = Bounds.getGDM(CurrentNode);
+  auto TempIter = GDM.find(TemporaryID);
+  if (TempIter != GDM.end()) {
+    GDM[NewID] = TempIter->second;
+    GDM.erase(TempIter);
+  }
+}
+
 namespace {
 
 bool isLastNode(const DynTypedNode &Node) {
