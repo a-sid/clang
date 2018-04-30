@@ -22,12 +22,9 @@
 #define LLVM_CLANG_ENTO_MATCHERS_GRAPHMATCHFINDER_H
 
 #include "clang/ASTMatchers/ASTGraphTypeTraits.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
-#include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
 #include "clang/StaticAnalyzer/Matchers/GraphMatchers.h"
 
-#include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/ASTMatchers/ASTMatchers.h"
+#include "clang/ASTMatchers/ASTMatchersInternal.h"
 
 #include "llvm/ADT/StringMap.h"
 

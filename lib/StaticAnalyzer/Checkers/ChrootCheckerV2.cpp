@@ -19,7 +19,7 @@
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
-#include "clang/StaticAnalyzer/Matchers//EGraphContext.h"
+#include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
 #include "clang/StaticAnalyzer/Matchers/GraphMatchFinder.h"
 
 #include "clang/ASTMatchers/ASTMatchFinder.h"
@@ -30,8 +30,6 @@ using namespace ento;
 using namespace llvm;
 using namespace ast_matchers;
 using namespace path_matchers;
-using ento::ast_graph_type_traits::DynTypedNode;
-namespace path_internal = path_matchers::internal;
 
 namespace {
 
@@ -74,19 +72,6 @@ public:
 };
 } // end anonymous namespace
 
-template <typename CalleeTy>
-class ProxyMatchCallback : public path_internal::PathMatchCallback {
-  CalleeTy Callee;
-
-public:
-  ProxyMatchCallback(CalleeTy Callee) : Callee(Callee) {}
-  virtual void run() override { Callee(); }
-};
-
-template <typename CalleeTy>
-ProxyMatchCallback<CalleeTy> createProxyCallback(CalleeTy Callee) {
-  return ProxyMatchCallback<CalleeTy>(Callee);
-}
 
 void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
                                        ExprEngine &Eng) const {
@@ -97,7 +82,7 @@ void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
     FuncName = FD->getQualifiedNameAsString();
 
   path_matchers::GraphMatchFinder Finder(BR.getContext());
-  auto Callback = createProxyCallback(
+  auto Callback = path_matchers::internal::createProxyCallback(
       [&FuncName]() -> void { llvm::errs() << FuncName << " matches!\n"; });
 
   StatementMatcher NotChdir =

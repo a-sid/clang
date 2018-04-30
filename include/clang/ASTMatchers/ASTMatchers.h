@@ -75,6 +75,7 @@
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/TypeTraits.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
+#include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -3952,7 +3953,7 @@ AST_MATCHER_P(IfStmt, hasElse, internal::Matcher<Stmt>, InnerMatcher) {
 /// and reference to that variable declaration within a compound statement.
 AST_POLYMORPHIC_MATCHER_P(equalsBoundNode,
                           AST_POLYMORPHIC_SUPPORTED_TYPES(Stmt, Decl, Type,
-                                                          QualType),
+                                                          QualType, ento::SVal),
                           std::string, ID) {
   // FIXME: Figure out whether it makes sense to allow this
   // on any other node types.
@@ -3963,7 +3964,15 @@ AST_POLYMORPHIC_MATCHER_P(equalsBoundNode,
   internal::NotEqualsBoundNodePredicate Predicate;
   Predicate.ID = ID;
   Predicate.Node = ento::ast_graph_type_traits::DynTypedNode::create(Node);
-  return Builder->removeBindings(Predicate);
+  if (Builder->removeBindings(Predicate))
+    return true;
+
+  // Graph matchers maintain their own node maps. Query them.
+  for (auto &MContext : Finder->contexts())
+    if (MContext.second->getBoundNode(ID) == Predicate.Node)
+      return true;
+
+  return false;
 }
 
 /// Matches the condition variable statement in an if statement.
