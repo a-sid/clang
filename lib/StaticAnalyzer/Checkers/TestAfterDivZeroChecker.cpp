@@ -40,6 +40,13 @@ public:
     return BlockID == X.BlockID && SFC == X.SFC && ZeroSymbol == X.ZeroSymbol;
   }
 
+  raw_ostream &dumpToStream(raw_ostream &Out) const {
+    Out << '{';
+    ZeroSymbol->dumpToStream(Out);
+    Out << ',' << SFC << ',' << BlockID << '}';
+    return Out;
+  }
+
   bool operator<(const ZeroState &X) const {
     if (BlockID != X.BlockID)
       return BlockID < X.BlockID;
@@ -86,6 +93,9 @@ public:
   void checkPreStmt(const BinaryOperator *B, CheckerContext &C) const;
   void checkBranchCondition(const Stmt *Condition, CheckerContext &C) const;
   void checkEndFunction(CheckerContext &C) const;
+  void printState(raw_ostream &Out, ProgramStateRef State, const char *NL,
+                  const char *Sep) const;
+
   void setDivZeroMap(SVal Var, CheckerContext &C) const;
   bool hasDivZeroMap(SVal Var, const CheckerContext &C) const;
   bool isZero(SVal S, CheckerContext &C) const;
@@ -255,6 +265,17 @@ void TestAfterDivZeroChecker::checkBranchCondition(const Stmt *Condition,
       if (hasDivZeroMap(Val, C))
         reportBug(Val, C);
     }
+  }
+}
+
+void TestAfterDivZeroChecker::printState(raw_ostream &Out,
+                                         ProgramStateRef State, const char *NL,
+                                         const char *Sep) const {
+  auto Map = State->get<DivZeroMap>();
+  if (!Map.isEmpty()) {
+    Out << Sep << "TestAfterDivZeroChecker :" << NL;
+    for (const auto &Item : Map)
+      Item.dumpToStream(Out) << NL;
   }
 }
 
