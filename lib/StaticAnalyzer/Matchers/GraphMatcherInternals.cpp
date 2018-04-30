@@ -164,6 +164,8 @@ SequenceVariadicOperator(const DynTypedNode &DynNode, GraphMatchFinder *Finder,
 } // end namespace internal
 
 const astm_internal::VariadicAllOfMatcher<ExplodedNode> explodedNode;
+const ast_matchers::internal::VariadicDynCastAllOfMatcher<SVal, DefinedSVal>
+    definedSVal;
 const astm_internal::VariadicDynCastAllOfMatcher<MemRegion, StringRegion>
     stringRegion;
 
