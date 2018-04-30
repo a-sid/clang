@@ -3236,6 +3236,10 @@ struct DOTGraphTraits<ExplodedNode*> : public DefaultDOTGraphTraits {
           Out << "\\lPostLValue\\l";
         else if (Loc.getAs<PostAllocatorCall>())
           Out << "\\lPostAllocatorCall\\l";
+        else if (Loc.getAs<PostCondition>())
+          Out << "\\lPostCondition\\l";
+        else if (Loc.getAs<PostStmt>())
+          Out << "\\lPostStmt\\l";
 
         break;
       }
