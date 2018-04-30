@@ -402,7 +402,7 @@ public:
       return getUnchecked<NestedNameSpecifierLoc>() ==
              Other.getUnchecked<NestedNameSpecifierLoc>();
 
-    if (ASTGraphNodeKind::getFromNodeKind<SVal>().isSame(NodeKind))
+    if (ASTGraphNodeKind::getFromNodeKind<SVal>().isBaseOf(NodeKind))
       return getUnchecked<SVal>() == Other.getUnchecked<SVal>();
 
     assert(getMemoizationData() && Other.getMemoizationData());

@@ -53,6 +53,11 @@ using ExplodedNodeMatcher = ast_matchers::internal::Matcher<ExplodedNode>;
 extern const ast_matchers::internal::VariadicAllOfMatcher<ExplodedNode>
     explodedNode;
 
+
+extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<SVal,
+                                                                 DefinedSVal>
+    definedSVal;
+
 extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<MemRegion,
                                                                  StringRegion>
     stringRegion;
