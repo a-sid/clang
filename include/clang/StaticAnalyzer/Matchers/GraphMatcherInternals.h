@@ -22,9 +22,7 @@
 
 #include "clang/ASTMatchers/ASTGraphTypeTraits.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
-#include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
 
-#include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 
 #include "llvm/ADT/StringMap.h"
@@ -57,7 +55,9 @@ public:
 
   void acceptTemporary(MatcherID NewID);
 
-  void addMatches(const ast_matchers::BoundNodes &Nodes);
+  void addMatches(ArrayRef<ast_matchers::BoundNodes> Nodes);
+
+  ast_graph_type_traits::DynTypedNode getBoundNode(StringRef ID);
 
 private:
   GraphBoundNodesMap &Bounds;
@@ -342,6 +342,21 @@ public:
 
   PathMatcher<NodeTy> *Matcher;
 };
+
+
+template <typename CalleeTy>
+class ProxyMatchCallback : public PathMatchCallback {
+  CalleeTy Callee;
+
+public:
+  ProxyMatchCallback(CalleeTy Callee) : Callee(Callee) {}
+  virtual void run() override { Callee(); }
+};
+
+template <typename CalleeTy>
+ProxyMatchCallback<CalleeTy> createProxyCallback(CalleeTy Callee) {
+  return ProxyMatchCallback<CalleeTy>(Callee);
+}
 
 template <typename NodeTy>
 MatchResult

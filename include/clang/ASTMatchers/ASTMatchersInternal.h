@@ -52,6 +52,7 @@
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/ASTMatchers/ASTGraphTypeTraits.h"
+#include "clang/ASTMatchers/MatchFinderContext.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
@@ -1060,9 +1061,9 @@ public:
     AMM_ParentOnly
   };
 
-  using ContextMapTy = llvm::DenseMap<void *, void *>;
+  using ContextMapTy = llvm::DenseMap<void *, MatchFinderContext *>;
 
-  ASTMatchFinder(ContextMapTy *ContextMap = nullptr) : ContextMap(ContextMap) {}
+  ASTMatchFinder(ContextMapTy &ContextMap) : ContextMap(ContextMap) {}
   virtual ~ASTMatchFinder() = default;
 
   /// Returns true if the given class is directly or indirectly derived
@@ -1124,12 +1125,17 @@ public:
   virtual ASTContext &getASTContext() const = 0;
 
   template <typename ContextTy> ContextTy *getContext() {
-    assert(ContextMap && "Context map is not set!");
-    void *Context = ContextMap->lookup(ContextTy::getTag());
+    void *Context = ContextMap.lookup(ContextTy::getTag());
     assert(Context && "Context was not properly initialized!");
     return static_cast<ContextTy *>(Context);
   }
 
+  using context_iterator = ContextMapTy::iterator;
+  context_iterator context_begin() { return ContextMap.begin(); }
+  context_iterator context_end() { return ContextMap.end(); }
+  llvm::iterator_range<context_iterator> contexts() {
+    return llvm::make_range(context_begin(), context_end());
+  }
 
 protected:
   virtual bool matchesChildOf(const ento::ast_graph_type_traits::DynTypedNode &Node,
@@ -1149,7 +1155,7 @@ protected:
                                  AncestorMatchMode MatchMode) = 0;
 
 private:
-  llvm::DenseMap<void *, void *> *ContextMap;
+  ContextMapTy &ContextMap;
 };
 
 /// A type-list implementation.

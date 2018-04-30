@@ -29,8 +29,9 @@ namespace internal {
 
 constexpr MatcherID GraphBoundNodesTreeBuilder::TemporaryID;
 
-void GraphBoundNodesTreeBuilder::addMatches(const BoundNodes &Nodes) {
-  Bounds.addMatches(CurrentNode, CurrentID, Nodes);
+void GraphBoundNodesTreeBuilder::addMatches(ArrayRef<BoundNodes> Nodes) {
+  if (!Nodes.empty())
+    Bounds.addMatches(CurrentNode, CurrentID, Nodes[0]);
 }
 
 void GraphBoundNodesTreeBuilder::acceptTemporary(MatcherID NewID) {
@@ -42,6 +43,14 @@ void GraphBoundNodesTreeBuilder::acceptTemporary(MatcherID NewID) {
   }
 }
 
+DynTypedNode GraphBoundNodesTreeBuilder::getBoundNode(StringRef ID) {
+  auto &GDM = Bounds.getGDM(CurrentNode);
+  auto MatcherNodes = GDM.find(CurrentID);
+  if (MatcherNodes == GDM.end())
+    return DynTypedNode();
+  return MatcherNodes->second.getNode(ID);
+}
+
 namespace {
 
 bool isLastNode(const DynTypedNode &Node) {
@@ -51,7 +60,8 @@ bool isLastNode(const DynTypedNode &Node) {
 }
 
 static std::pair<size_t, bool>
-matchNotMatchers(size_t StartIndex, const DynTypedNode &Node, ASTContext &Ctx,
+matchNotMatchers(size_t StartIndex, const DynTypedNode &Node,
+                 GraphBoundNodesTreeBuilder *Builder, ASTContext &Ctx,
                  ArrayRef<astm_internal::DynTypedMatcher> Matchers) {
   size_t I = StartIndex;
   for (; I < Matchers.size(); ++I) {
@@ -64,7 +74,7 @@ matchNotMatchers(size_t StartIndex, const DynTypedNode &Node, ASTContext &Ctx,
     Finder.addDynamicMatcher(Matchers[I], &Callback);
     std::unique_ptr<EGraphContext> EGContext;
     if (const ExplodedNode *ENode = Node.get<ExplodedNode>()) {
-      EGContext.reset(new EGraphContext(ENode));
+      EGContext.reset(new EGraphContext(*Builder, ENode));
       Finder.addContext(EGContext.get());
     }
     Finder.match(Node, Ctx);
@@ -109,8 +119,8 @@ SequenceVariadicOperator(const DynTypedNode &DynNode, GraphMatchFinder *Finder,
                          MatcherStateID StateID) {
   size_t Index = matcherIndexByStateID(StateID, InnerMatchers);
   bool NegMatch = false;
-  std::tie(Index, NegMatch) =
-      matchNotMatchers(Index, DynNode, Finder->getASTContext(), InnerMatchers);
+  std::tie(Index, NegMatch) = matchNotMatchers(
+      Index, DynNode, Builder, Finder->getASTContext(), InnerMatchers);
   if (!NegMatch) {
     if (StateID == 0)
       return {MatchAction::RejectForever, StateInvalid};
@@ -142,7 +152,7 @@ SequenceVariadicOperator(const DynTypedNode &DynNode, GraphMatchFinder *Finder,
   NodeFinder.addDynamicMatcher(InnerMatchers[Index], &CB);
   std::unique_ptr<EGraphContext> EGContext;
   if (const ExplodedNode *ENode = DynNode.get<ExplodedNode>()) {
-    EGContext.reset(new EGraphContext(ENode));
+    EGContext.reset(new EGraphContext(*Builder, ENode));
     NodeFinder.addContext(EGContext.get());
   }
   NodeFinder.match(DynNode, Finder->getASTContext());
@@ -151,6 +161,7 @@ SequenceVariadicOperator(const DynTypedNode &DynNode, GraphMatchFinder *Finder,
       CB.HasMatches;
 
   if (PositiveMatch) {
+    Builder->addMatches(CB.Nodes);
     if (IsLastMatcher)
       return {MatchAction::Accept, Index};
     else

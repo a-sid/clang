@@ -88,9 +88,10 @@ void GraphMatchFinder::match(ExplodedGraph &G, BugReporter &BR,
   while (!Stack.empty()) {
     ENodeRef From = Stack.pop_back_val();
     for (ENodeRef Succ : From->successors()) {
-      advance(From, Succ);
-      if (Visited.insert(Succ).second) // Not visited before
+      if (Visited.insert(Succ).second) { // Not visited before
+        advance(From, Succ);
         Stack.push_back(Succ);
+      }
     }
   }
 }
