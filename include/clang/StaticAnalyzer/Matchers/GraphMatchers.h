@@ -78,6 +78,8 @@ AST_MATCHER_P(ExplodedNode, statementNode, ast_matchers::StatementMatcher,
 
 PROGRAM_POINT_MATCHER(PreStmt, preStmtNode)
 PROGRAM_POINT_MATCHER(PostStmt, postStmtNode)
+PROGRAM_POINT_MATCHER(BlockEdge, blockEdgeNode)
+PROGRAM_POINT_MATCHER(PostCondition, postConditionNode)
 
 #undef PROGRAM_POINT_MATCHER
 
@@ -91,8 +93,7 @@ AST_MATCHER_P(ExplodedNode, callEnterNode, ast_matchers::StatementMatcher,
 
 AST_MATCHER_P(Stmt, hasValue, ast_matchers::internal::Matcher<SVal>, Inner) {
   EGraphContext *Context = Finder->getContext<EGraphContext>();
-  ProgramStateRef State = Context->getState();
-  SVal Res = State->getSVal(&Node, Context->getLocationContext());
+  SVal Res = Context->getSVal(&Node);
   return Inner.matches(Res, Finder, Builder);
 }
 

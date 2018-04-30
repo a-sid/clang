@@ -1,6 +1,7 @@
 set(LLVM_LINK_COMPONENTS support)
 
 add_clang_library(clangStaticAnalyzerMatchers
+  EGraphContext.cpp
   GraphMatchFinder.cpp
   GraphMatcherInternals.cpp
   

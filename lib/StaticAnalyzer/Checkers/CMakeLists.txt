@@ -85,6 +85,7 @@ add_clang_library(clangStaticAnalyzerCheckers
   StreamChecker.cpp
   TaintTesterChecker.cpp
   TestAfterDivZeroChecker.cpp
+  TestAfterDivZeroCheckerV2.cpp
   TraversalChecker.cpp
   TrustNonnullChecker.cpp
   UndefBranchChecker.cpp

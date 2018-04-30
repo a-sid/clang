@@ -312,7 +312,7 @@ class MatchASTVisitor : public RecursiveASTVisitor<MatchASTVisitor>,
 public:
   MatchASTVisitor(const MatchFinder::MatchersByType *Matchers,
                   const MatchFinder::MatchFinderOptions &Options,
-                  ASTMatchFinder::ContextMapTy *ContextMap = nullptr)
+                  ASTMatchFinder::ContextMapTy &ContextMap)
       : ASTMatchFinder(ContextMap), Matchers(Matchers), Options(Options),
         ActiveASTContext(nullptr) {}
 
@@ -1041,13 +1041,13 @@ std::unique_ptr<ASTConsumer> MatchFinder::newASTConsumer() {
 
 void MatchFinder::match(const clang::ento::ast_graph_type_traits::DynTypedNode &Node,
                         ASTContext &Context) {
-  internal::MatchASTVisitor Visitor(&Matchers, Options, &ContextMap);
+  internal::MatchASTVisitor Visitor(&Matchers, Options, ContextMap);
   Visitor.set_active_ast_context(&Context);
   Visitor.match(Node);
 }
 
 void MatchFinder::matchAST(ASTContext &Context) {
-  internal::MatchASTVisitor Visitor(&Matchers, Options, &ContextMap);
+  internal::MatchASTVisitor Visitor(&Matchers, Options, ContextMap);
   Visitor.set_active_ast_context(&Context);
   Visitor.onStartOfTranslationUnit();
   Visitor.TraverseDecl(Context.getTranslationUnitDecl());
