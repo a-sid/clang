@@ -212,7 +212,10 @@ void ProgramPoint::print(StringRef CR, llvm::raw_ostream &Out) const {
       Out << CR << "PostLValue" << CR;
     else if (getAs<PostAllocatorCall>())
       Out << CR << "PostAllocatorCall" << CR;
-
+    else if (Loc.getAs<PostCondition>())
+      Out << "\\lPostCondition\\l";
+    else if (Loc.getAs<PostStmt>())
+      Out << "\\lPostStmt\\l";
     break;
   }
   }
