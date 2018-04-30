@@ -215,6 +215,7 @@ inline raw_ostream &operator<<(raw_ostream &os, clang::ento::SVal V) {
 class UndefinedVal : public SVal {
 public:
   UndefinedVal() : SVal(UndefinedValKind) {}
+  static bool classof(const SVal *V) { return isKind(*V); }
 
 private:
   friend class SVal;
@@ -243,12 +244,15 @@ private:
   static bool isKind(const SVal& V) {
     return !V.isUndef();
   }
+public:
+  static bool classof(const SVal *V) { return isKind(*V); }
 };
   
 class UnknownVal : public DefinedOrUnknownSVal {
 public:
   explicit UnknownVal() : DefinedOrUnknownSVal(UnknownValKind) {}
-  
+  static bool classof(const SVal *V) { return isKind(*V); }
+
 private:
   friend class SVal;
 
@@ -276,6 +280,8 @@ private:
   static bool isKind(const SVal& V) {
     return !V.isUnknownOrUndef();
   }
+public:
+  static bool classof(const SVal *V) { return isKind(*V); }
 };
 
 /// Represents an SVal that is guaranteed to not be UnknownVal.
@@ -291,6 +297,7 @@ class KnownSVal : public SVal {
 public:
   KnownSVal(const DefinedSVal &V) : SVal(V) {}
   KnownSVal(const UndefinedVal &V) : SVal(V) {}
+  static bool classof(const SVal *V) { return isKind(*V); }
 };
 
 class NonLoc : public DefinedSVal {
@@ -300,6 +307,7 @@ protected:
       : DefinedSVal(d, false, SubKind) {}
 
 public:
+  static bool classof(const SVal *V) { return isKind(*V); }
   void dumpToStream(raw_ostream &Out) const;
 
   static bool isCompoundType(QualType T) {
@@ -323,6 +331,7 @@ protected:
 
 public:
   void dumpToStream(raw_ostream &Out) const;
+  static bool classof(const SVal *V) { return isKind(*V); }
 
   static bool isLocType(QualType T) {
     return T->isAnyPointerType() || T->isBlockPointerType() || 
@@ -357,6 +366,8 @@ public:
     return !isa<SymbolData>(getSymbol());
   }
 
+  static bool classof(const SVal *V) { return isKind(*V); }
+
 private:
   friend class SVal;
 
@@ -386,6 +397,8 @@ public:
   ConcreteInt evalComplement(SValBuilder &svalBuilder) const;
 
   ConcreteInt evalMinus(SValBuilder &svalBuilder) const;
+
+  static bool classof(const SVal *V) { return isKind(*V); }
 
 private:
   friend class SVal;
@@ -434,6 +447,8 @@ public:
     return D->second;
   }
 
+  static bool classof(const SVal *V) { return isKind(*V); }
+
 private:
   friend class SVal;
 
@@ -464,6 +479,8 @@ public:
   iterator begin() const;
   iterator end() const;
 
+  static bool classof(const SVal *V) { return isKind(*V); }
+
 private:
   friend class SVal;
 
@@ -491,6 +508,8 @@ public:
 
   const void *getStore() const;
   const TypedValueRegion *getRegion() const;
+
+  static bool classof(const SVal *V) { return isKind(*V); }
 
 private:
   friend class SVal;
@@ -542,6 +561,7 @@ public:
 
   iterator begin() const;
   iterator end() const;
+  static bool classof(const SVal *V) { return isKind(*V); }
 
 private:
   friend class SVal;
@@ -577,6 +597,8 @@ public:
   const LabelDecl *getLabel() const {
     return static_cast<const LabelDecl *>(Data);
   }
+
+  static bool classof(const SVal *V) { return isKind(*V); }
 
 private:
   friend class SVal;
@@ -619,6 +641,8 @@ public:
     return getRegion() != R.getRegion();
   }
 
+  static bool classof(const SVal *V) { return isKind(*V); }
+
 private:
   friend class SVal;
 
@@ -645,6 +669,8 @@ public:
   // Transfer functions for binary/unary operations on ConcreteInts.
   SVal evalBinOp(BasicValueFactory& BasicVals, BinaryOperator::Opcode Op,
                  const ConcreteInt& R) const;
+
+  static bool classof(const SVal *V) { return isKind(*V); }
 
 private:
   friend class SVal;
