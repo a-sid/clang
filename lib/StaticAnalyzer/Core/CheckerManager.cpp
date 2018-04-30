@@ -170,6 +170,21 @@ namespace {
 
 } // namespace
 
+/// Run checkers for pre-visiting Stmts.
+void CheckerManager::runCheckersForPreStmt(ExplodedNodeSet &Dst,
+                                           const ExplodedNodeSet &Src,
+                                           const Stmt *S, ExprEngine &Eng) {
+  ExplodedNodeSet Tmp;
+
+  NodeBuilder NB(Src, Tmp, Eng.getBuilderContext());
+  for (ExplodedNode *Node : Src) {
+    PreStmt PP(S, Node->getLocationContext(), nullptr);
+    NB.generateNode(PP, Node->getState(), Node);
+  }
+
+  runCheckersForStmt(/*isPreVisit=*/true, Dst, Tmp, S, Eng);
+}
+
 /// Run checkers for visiting Stmts.
 void CheckerManager::runCheckersForStmt(bool isPreVisit,
                                         ExplodedNodeSet &Dst,
@@ -486,7 +501,11 @@ void CheckerManager::runCheckersForBranchCondition(const Stmt *Condition,
                                                    ExplodedNode *Pred,
                                                    ExprEngine &Eng) {
   ExplodedNodeSet Src;
-  Src.insert(Pred);
+
+  auto L = PostCondition(Condition, Pred->getLocationContext(), nullptr);
+  NodeBuilder NB(Pred, Src, Eng.getBuilderContext());
+  NB.generateNode(L, Pred->getState(), Pred);
+
   CheckBranchConditionContext C(BranchConditionCheckers, Condition, Eng);
   expandGraphWithCheckers(C, Dst, Src);
 }
