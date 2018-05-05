@@ -1,0 +1,44 @@
+
+#ifndef PROGRAM_POINT
+#define PROGRAM_POINT(Id, Parent)
+#endif
+
+#ifndef ABSTRACT_PROGRAM_POINT
+#define ABSTRACT_PROGRAM_POINT(Id, Parent)
+#endif
+
+#ifndef PROGRAM_POINT_RANGE
+#define PROGRAM_POINT_RANGE(Id, First, Last)
+#endif
+
+PROGRAM_POINT(BlockEdge, ProgramPoint)
+PROGRAM_POINT(BlockEntrance, ProgramPoint)
+PROGRAM_POINT(BlockExit, ProgramPoint)
+ABSTRACT_PROGRAM_POINT(StmtPoint, ProgramPoint)
+  PROGRAM_POINT(PreStmt, StmtPoint)
+  PROGRAM_POINT(PreStmtPurgeDeadSymbols, StmtPoint)
+  PROGRAM_POINT(PostStmtPurgeDeadSymbols, StmtPoint)
+  PROGRAM_POINT(PostAllocatorCall, StmtPoint)
+  ABSTRACT_PROGRAM_POINT(LocationCheck, StmtPoint)
+    PROGRAM_POINT(PreLoad, LocationCheck)
+    PROGRAM_POINT(PreStore, LocationCheck)
+  PROGRAM_POINT(PostStmt, StmtPoint)
+    PROGRAM_POINT(PostLoad, PostStmt)
+    PROGRAM_POINT(PostStore, PostStmt)
+    PROGRAM_POINT(PostCondition, PostStmt)
+    PROGRAM_POINT(PostLValue, PostStmt)
+PROGRAM_POINT_RANGE(PostStmt, LocationCheck, PostLValue)
+PROGRAM_POINT(PostInitializer, ProgramPoint)
+PROGRAM_POINT(CallEnter, ProgramPoint)
+PROGRAM_POINT(CallExitBegin, ProgramPoint)
+PROGRAM_POINT(CallExitEnd, ProgramPoint)
+ABSTRACT_PROGRAM_POINT(ImplicitCallPoint, ProgramPoint)
+  PROGRAM_POINT(PreImplicitCall, ImplicitCallPoint)
+  PROGRAM_POINT(PostImplicitCall, ImplicitCallPoint)
+PROGRAM_POINT_RANGE(ImplicitCall, ImplicitCallPoint, PostImplicitCall)
+PROGRAM_POINT(LoopExit, ProgramPoint)
+PROGRAM_POINT(EpsilonPoint, ProgramPoint)
+
+#undef PROGRAM_POINT
+#undef ABSTRACT_PROGRAM_POINT
+#undef PROGRAM_POINT_RANGE

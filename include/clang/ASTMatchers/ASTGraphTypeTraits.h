@@ -70,6 +70,8 @@ public:
   static ASTGraphNodeKind getFromNode(const ExplodedNode &N);
   static ASTGraphNodeKind getFromNode(const MemRegion &Region);
   static ASTGraphNodeKind getFromNode(const SymExpr &Sym);
+  static ASTGraphNodeKind getFromNode(const LocationContext &LCtx);
+  static ASTGraphNodeKind getFromNode(const ProgramPoint &PP);
 
   /// \}
 
@@ -163,6 +165,11 @@ public:
 #define ABSTRACT_SYMBOL(Id, Parent) SYMBOL(Id, Parent)
 #include "clang/StaticAnalyzer/Core/PathSensitive/Symbols.def"
 
+    NKI_LocationContext,
+    NKI_StackFrameContext,
+    NKI_ScopeContext,
+    NKI_BlockInvocationContext,
+
     NKI_ExplodedGraph,
     NKI_CFG,
 
@@ -174,6 +181,9 @@ public:
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.def"
 
     NKI_ProgramPoint,
+#define PROGRAM_POINT(Id, Parent) NKI_##Id,
+#define ABSTRACT_PROGRAM_POINT(Id, Parent) PROGRAM_POINT(Id, Parent)
+#include "clang/Analysis/ProgramPoint.def"
 
     NKI_NumberOfKinds
   };
@@ -234,7 +244,12 @@ KIND_TO_KIND_ID(ProgramState)
 KIND_TO_KIND_ID(SVal)
 KIND_TO_KIND_ID(MemRegion)
 KIND_TO_KIND_ID(SymExpr)
+KIND_TO_KIND_ID(ProgramPoint)
 
+KIND_TO_KIND_ID(LocationContext)
+KIND_TO_KIND_ID(StackFrameContext)
+KIND_TO_KIND_ID(ScopeContext)
+KIND_TO_KIND_ID(BlockInvocationContext)
 
 #define SVAL_KIND_TO_KIND_ID(Namespace, Class)                                 \
   template <> struct ASTGraphNodeKind::KindToKindId<Namespace::Class> {        \
@@ -246,6 +261,10 @@ KIND_TO_KIND_ID(SymExpr)
 #define LOC_SVAL(Id, Parent) SVAL_KIND_TO_KIND_ID(loc, Id)
 #define NONLOC_SVAL(Id, Parent) SVAL_KIND_TO_KIND_ID(nonloc, Id)
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.def"
+
+#define PROGRAM_POINT(Id, Parent) KIND_TO_KIND_ID(Id)
+#define ABSTRACT_PROGRAM_POINT(Id, Parent) PROGRAM_POINT(Id, Parent)
+#include "clang/Analysis/ProgramPoint.def"
 
 #define REGION(Id, Parent) KIND_TO_KIND_ID(Id)
 #define ABSTRACT_REGION(Id, Parent) REGION(Id, Parent)
@@ -290,7 +309,6 @@ public:
            sizeof(Result.Storage.buffer));
     return Result;
   }
-
 
   /// \brief Retrieve the stored node as type \c T.
   ///
@@ -370,6 +388,12 @@ public:
              std::make_pair(NNSLB.getNestedNameSpecifier(),
                             NNSLB.getOpaqueData());
     }
+
+    if (ASTGraphNodeKind::getFromNodeKind<SVal>().isBaseOf(NodeKind))
+      return getUnchecked<SVal>() < Other.getUnchecked<SVal>();
+
+    if (ASTGraphNodeKind::getFromNodeKind<ProgramPoint>().isBaseOf(NodeKind))
+      return getUnchecked<ProgramPoint>() < Other.getUnchecked<ProgramPoint>();
 
     assert(getMemoizationData() && Other.getMemoizationData());
     return getMemoizationData() < Other.getMemoizationData();
@@ -553,10 +577,10 @@ private:
   /// \c TemplateArguments on the other hand do not have storage or unique
   /// pointers and thus need to be stored by value.
   llvm::AlignedCharArrayUnion<const void *, TemplateArgument,
-                              NestedNameSpecifierLoc, QualType, TypeLoc, SVal>
+                              NestedNameSpecifierLoc, QualType, TypeLoc, SVal,
+                              ProgramPoint>
       Storage;
 };
-
 
 template <>
 inline DynTypedNode DynTypedNode::create<ast_type_traits::DynTypedNode>(
@@ -632,6 +656,11 @@ struct DynTypedNode::BaseConverter<
 
 template <typename T>
 struct DynTypedNode::BaseConverter<
+    T, typename std::enable_if<std::is_base_of<ProgramPoint, T>::value>::type>
+    : public DynCastValueConverter<T, ProgramPoint> {};
+
+template <typename T>
+struct DynTypedNode::BaseConverter<
     T, typename std::enable_if<std::is_base_of<MemRegion, T>::value>::type>
     : public DynCastPtrConverter<T, MemRegion> {};
 
@@ -639,6 +668,12 @@ template <typename T>
 struct DynTypedNode::BaseConverter<
     T, typename std::enable_if<std::is_base_of<SymExpr, T>::value>::type>
     : public DynCastPtrConverter<T, SymExpr> {};
+
+template <typename T>
+struct DynTypedNode::BaseConverter<
+    T,
+    typename std::enable_if<std::is_base_of<LocationContext, T>::value>::type>
+    : public DynCastPtrConverter<T, LocationContext> {};
 
 // The only operation we allow on unsupported types is \c get.
 // This allows to conveniently use \c DynTypedNode when having an arbitrary

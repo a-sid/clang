@@ -175,11 +175,24 @@ SequenceVariadicOperator(const DynTypedNode &DynNode, GraphMatchFinder *Finder,
 } // end namespace internal
 
 const astm_internal::VariadicAllOfMatcher<ExplodedNode> explodedNode;
-const ast_matchers::internal::VariadicDynCastAllOfMatcher<SVal, DefinedSVal>
-    definedSVal;
+const astm_internal::VariadicDynCastAllOfMatcher<SVal, DefinedSVal> definedSVal;
 const astm_internal::VariadicDynCastAllOfMatcher<MemRegion, StringRegion>
     stringRegion;
-
+const astm_internal::VariadicDynCastAllOfMatcher<LocationContext,
+                                                 StackFrameContext>
+    stackFrameContext;
+const astm_internal::VariadicAllOfMatcher<ProgramPoint> programPoint;
+const astm_internal::VariadicDynCastAllOfMatcher<ProgramPoint, PreStmt> preStmt;
+const astm_internal::VariadicDynCastAllOfMatcher<ProgramPoint, PostStmt>
+    postStmt;
+const astm_internal::VariadicDynCastAllOfMatcher<ProgramPoint, BlockEdge>
+    blockEdge;
+const astm_internal::VariadicDynCastAllOfMatcher<ProgramPoint, PostCondition>
+    postCondition;
+const astm_internal::VariadicDynCastAllOfMatcher<ProgramPoint, StmtPoint>
+    stmtPoint;
+const astm_internal::VariadicDynCastAllOfMatcher<ProgramPoint, CallEnter>
+    callEnter;
 } // end namespace path_matchers
 
 } // end namespace ento

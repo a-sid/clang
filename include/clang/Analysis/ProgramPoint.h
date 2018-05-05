@@ -60,32 +60,13 @@ public:
 
 class ProgramPoint {
 public:
-  enum Kind { BlockEdgeKind,
-              BlockEntranceKind,
-              BlockExitKind,
-              PreStmtKind,
-              PreStmtPurgeDeadSymbolsKind,
-              PostStmtPurgeDeadSymbolsKind,
-              PostStmtKind,
-              PreLoadKind,
-              PostLoadKind,
-              PreStoreKind,
-              PostStoreKind,
-              PostConditionKind,
-              PostLValueKind,
-              PostAllocatorCallKind,
-              MinPostStmtKind = PostStmtKind,
-              MaxPostStmtKind = PostAllocatorCallKind,
-              PostInitializerKind,
-              CallEnterKind,
-              CallExitBeginKind,
-              CallExitEndKind,
-              PreImplicitCallKind,
-              PostImplicitCallKind,
-              MinImplicitCallKind = PreImplicitCallKind,
-              MaxImplicitCallKind = PostImplicitCallKind,
-              LoopExitKind,
-              EpsilonKind};
+  enum Kind {
+#define PROGRAM_POINT(Id, Parent) Id##Kind,
+#define ABSTRACT_PROGRAM_POINT(Id, Parent) PROGRAM_POINT(Id, Parent)
+#define PROGRAM_POINT_RANGE(Id, First, Last)                                   \
+  Min##Id##Kind = First##Kind, Max##Id##Kind = Last##Kind,
+#include "ProgramPoint.def"
+  };
 
 private:
   const void *Data1;
@@ -206,6 +187,23 @@ public:
            Tag != RHS.Tag;
   }
 
+  bool operator<(const ProgramPoint &RHS) const {
+    if (Data1 < RHS.Data1) {
+      return true;
+    } else if (Data1 == RHS.Data1) {
+      if (Data2 < RHS.Data2) {
+        return true;
+      } else if (Data2 == RHS.Data2) {
+        if (L < RHS.L) {
+          return true;
+        } else if (L == RHS.L) {
+          return Tag < RHS.Tag;
+        }
+      }
+    }
+    return false;
+  }
+
   void Profile(llvm::FoldingSetNodeID& ID) const {
     ID.AddInteger((unsigned) getKind());
     ID.AddPointer(getData1());
@@ -236,6 +234,8 @@ public:
     return B->empty() ? Optional<CFGElement>() : B->front();
   }
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 private:
   friend class ProgramPoint;
   BlockEntrance() = default;
@@ -256,6 +256,8 @@ public:
   const Stmt *getTerminator() const {
     return getBlock()->getTerminator();
   }
+
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
 
 private:
   friend class ProgramPoint;
@@ -278,6 +280,8 @@ public:
   template <typename T>
   const T* getStmtAs() const { return dyn_cast<T>(getStmt()); }
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 protected:
   StmtPoint() = default;
 private:
@@ -296,6 +300,8 @@ public:
     : StmtPoint(S, SubStmt, PreStmtKind, L, tag) {}
 
   const Stmt *getSubStmt() const { return (const Stmt*) getData2(); }
+
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
 
 private:
   friend class ProgramPoint;
@@ -321,6 +327,8 @@ public:
                     const ProgramPointTag *tag = nullptr)
     : StmtPoint(S, nullptr, PostStmtKind, L, tag) {}
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 private:
   friend class ProgramPoint;
   static bool isKind(const ProgramPoint &Location) {
@@ -335,6 +343,8 @@ public:
   PostCondition(const Stmt *S, const LocationContext *L,
                 const ProgramPointTag *tag = nullptr)
     : PostStmt(S, PostConditionKind, L, tag) {}
+
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
 
 private:
   friend class ProgramPoint;
@@ -351,6 +361,8 @@ protected:
                 ProgramPoint::Kind K, const ProgramPointTag *tag)
     : StmtPoint(S, nullptr, K, L, tag) {}
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 private:
   friend class ProgramPoint;
   static bool isKind(const ProgramPoint &location) {
@@ -364,6 +376,8 @@ public:
   PreLoad(const Stmt *S, const LocationContext *L,
           const ProgramPointTag *tag = nullptr)
     : LocationCheck(S, L, PreLoadKind, tag) {}
+
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
 
 private:
   friend class ProgramPoint;
@@ -379,6 +393,8 @@ public:
            const ProgramPointTag *tag = nullptr)
   : LocationCheck(S, L, PreStoreKind, tag) {}
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 private:
   friend class ProgramPoint;
   PreStore() = default;
@@ -392,6 +408,8 @@ public:
   PostLoad(const Stmt *S, const LocationContext *L,
            const ProgramPointTag *tag = nullptr)
     : PostStmt(S, PostLoadKind, L, tag) {}
+
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
 
 private:
   friend class ProgramPoint;
@@ -420,6 +438,8 @@ public:
     return getData2();
   }
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 private:
   friend class ProgramPoint;
   PostStore() = default;
@@ -433,6 +453,8 @@ public:
   PostLValue(const Stmt *S, const LocationContext *L,
              const ProgramPointTag *tag = nullptr)
     : PostStmt(S, PostLValueKind, L, tag) {}
+
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
 
 private:
   friend class ProgramPoint;
@@ -450,6 +472,8 @@ public:
                        const ProgramPointTag *tag = nullptr)
     : StmtPoint(S, nullptr, PreStmtPurgeDeadSymbolsKind, L, tag) { }
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 private:
   friend class ProgramPoint;
   PreStmtPurgeDeadSymbols() = default;
@@ -465,6 +489,8 @@ public:
   PostStmtPurgeDeadSymbols(const Stmt *S, const LocationContext *L,
                        const ProgramPointTag *tag = nullptr)
     : StmtPoint(S, nullptr, PostStmtPurgeDeadSymbolsKind, L, tag) { }
+
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
 
 private:
   friend class ProgramPoint;
@@ -489,6 +515,8 @@ public:
   const CFGBlock *getDst() const {
     return static_cast<const CFGBlock*>(getData2());
   }
+
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
 
 private:
   friend class ProgramPoint;
@@ -519,6 +547,8 @@ public:
     return getData2();
   }
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 private:
   friend class ProgramPoint;
   PostInitializer() = default;
@@ -541,6 +571,8 @@ public:
     return SourceLocation::getFromPtrEncoding(getData1());
   }
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 protected:
   ImplicitCallPoint() = default;
 private:
@@ -560,6 +592,8 @@ public:
                   const ProgramPointTag *Tag = nullptr)
     : ImplicitCallPoint(D, Loc, PreImplicitCallKind, L, Tag) {}
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 private:
   friend class ProgramPoint;
   PreImplicitCall() = default;
@@ -576,6 +610,8 @@ public:
   PostImplicitCall(const Decl *D, SourceLocation Loc, const LocationContext *L,
                    const ProgramPointTag *Tag = nullptr)
     : ImplicitCallPoint(D, Loc, PostImplicitCallKind, L, Tag) {}
+
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
 
 private:
   friend class ProgramPoint;
@@ -622,6 +658,8 @@ public:
     return &(CalleeCFG->getEntry());
   }
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 private:
   friend class ProgramPoint;
   CallEnter() = default;
@@ -649,6 +687,8 @@ public:
     return static_cast<const ReturnStmt *>(getData1());
   }
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 private:
   friend class ProgramPoint;
   CallExitBegin() = default;
@@ -670,6 +710,8 @@ public:
     return static_cast<const StackFrameContext *>(getData1());
   }
 
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
+
 private:
   friend class ProgramPoint;
   CallExitEnd() = default;
@@ -686,19 +728,21 @@ private:
 /// result in a LoopExit program point.
 class LoopExit : public ProgramPoint {
 public:
-    LoopExit(const Stmt *LoopStmt, const LocationContext *LC)
-            : ProgramPoint(LoopStmt, nullptr, LoopExitKind, LC) {}
+  LoopExit(const Stmt *LoopStmt, const LocationContext *LC)
+      : ProgramPoint(LoopStmt, nullptr, LoopExitKind, LC) {}
 
-    const Stmt *getLoopStmt() const {
-      return static_cast<const Stmt *>(getData1());
-    }
+  const Stmt *getLoopStmt() const {
+    return static_cast<const Stmt *>(getData1());
+  }
+
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
 
 private:
-    friend class ProgramPoint;
-    LoopExit() = default;
-    static bool isKind(const ProgramPoint &Location) {
-      return Location.getKind() == LoopExitKind;
-    }
+  friend class ProgramPoint;
+  LoopExit() = default;
+  static bool isKind(const ProgramPoint &Location) {
+    return Location.getKind() == LoopExitKind;
+  }
 };
 
 /// This is a meta program point, which should be skipped by all the diagnostic
@@ -708,15 +752,17 @@ public:
   EpsilonPoint(const LocationContext *L, const void *Data1,
                const void *Data2 = nullptr,
                const ProgramPointTag *tag = nullptr)
-    : ProgramPoint(Data1, Data2, EpsilonKind, L, tag) {}
+    : ProgramPoint(Data1, Data2, EpsilonPointKind, L, tag) {}
 
   const void *getData() const { return getData1(); }
+
+  static bool classof(const ProgramPoint *PP) { return isKind(*PP); }
 
 private:
   friend class ProgramPoint;
   EpsilonPoint() = default;
   static bool isKind(const ProgramPoint &Location) {
-    return Location.getKind() == EpsilonKind;
+    return Location.getKind() == EpsilonPointKind;
   }
 };
 

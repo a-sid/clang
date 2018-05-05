@@ -1029,6 +1029,7 @@ bool MatchFinder::addDynamicMatcher(const internal::DynTypedMatcher &NodeMatch,
     return true;
   } else if (NodeMatch.canConvertTo<ento::ExplodedNode>()) {
       addMatcher(NodeMatch.convertTo<ento::ExplodedNode>(), Action);
+      return true;
   }/* else if (NodeMatch.canConvertTo<ento::SVal>()) {
     addMatcher(NodeMatch.convertTo<ento::SVal>(), Action);
   }*/

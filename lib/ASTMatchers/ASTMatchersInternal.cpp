@@ -258,11 +258,17 @@ bool DynTypedMatcher::canConvertTo(
   auto SValKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<ento::SVal>();
   auto SymKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<ento::SymExpr>();
   auto RegionKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<ento::MemRegion>();
+  auto ENodeKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<ento::ExplodedNode>();
+  auto ProgramStateKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<ento::ProgramState>();
+  auto ProgramPointKind = ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<ProgramPoint>();
   /// Mimic the implicit conversions of Matcher<>.
   /// - From Matcher<Type> to Matcher<QualType>
   if (From.isSame(TypeKind) && To.isSame(QualKind))
     return true;
   if ((From.isSame(SymKind) || From.isSame(RegionKind)) && To.isSame(SValKind))
+    return true;
+  if ((From.isSame(ProgramStateKind) || From.isSame(ProgramPointKind)) &&
+      To.isSame(ENodeKind))
     return true;
   /// - From Matcher<Base> to Matcher<Derived>
   return From.isBaseOf(To);

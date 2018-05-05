@@ -174,7 +174,7 @@ void CoreEngine::dispatchWorkItem(ExplodedNode* Pred, ProgramPoint Loc,
       SubEng.processCallExit(Pred);
       break;
 
-    case ProgramPoint::EpsilonKind: {
+    case ProgramPoint::EpsilonPointKind: {
       assert(Pred->hasSinglePred() &&
              "Assume epsilon has exactly one predecessor by construction");
       ExplodedNode *PNode = Pred->getFirstPred();

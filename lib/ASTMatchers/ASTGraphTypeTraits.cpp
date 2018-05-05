@@ -49,6 +49,10 @@ const ASTGraphNodeKind::KindInfo ASTGraphNodeKind::AllKindInfo[] = {
 #define SYMBOL(DERIVED, BASE) {NKI_##BASE, #DERIVED},
 #define ABSTRACT_SYMBOL(Id, Parent) SYMBOL(Id, Parent)
 #include "clang/StaticAnalyzer/Core/PathSensitive/Symbols.def"
+    {NKI_None, "LocationContext"},
+    {NKI_LocationContext, "StackFrameContext"},
+    {NKI_LocationContext, "ScopeContext"},
+    {NKI_LocationContext, "BlockInvocationContext"},
     {NKI_None, "ExplodedGraph"},
     {NKI_None, "CFG"},
     {NKI_None, "SVal"},
@@ -57,7 +61,10 @@ const ASTGraphNodeKind::KindInfo ASTGraphNodeKind::AllKindInfo[] = {
 #define LOC_SVAL(DERIVED, BASE) {NKI_##BASE, #DERIVED},
 #define NONLOC_SVAL(DERIVED, BASE) {NKI_##BASE, #DERIVED},
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.def"
-  {NKI_None, "ProgramPoint"}
+    {NKI_None, "ProgramPoint"},
+#define PROGRAM_POINT(DERIVED, BASE) {NKI_##BASE, #DERIVED},
+#define ABSTRACT_PROGRAM_POINT(Id, Parent) PROGRAM_POINT(Id, Parent)
+#include "clang/Analysis/ProgramPoint.def"
 
 };
 
@@ -161,7 +168,7 @@ ASTGraphNodeKind ASTGraphNodeKind::getFromNode(const SVal &SV) {
     }
   }
   }
-  llvm_unreachable("invalid type kind");
+  llvm_unreachable("Invalid SVal kind");
 }
 
 ASTGraphNodeKind ASTGraphNodeKind::getFromNode(const MemRegion &Region) {
@@ -172,7 +179,7 @@ ASTGraphNodeKind ASTGraphNodeKind::getFromNode(const MemRegion &Region) {
 #define ABSTRACT_REGION(Id, Parent) REGION(Id, Parent)
 #include "clang/StaticAnalyzer/Core/PathSensitive/Regions.def"
   }
-  llvm_unreachable("invalid type kind");
+  llvm_unreachable("Invalid MemRegion kind");
 }
 
 ASTGraphNodeKind ASTGraphNodeKind::getFromNode(const SymExpr &Sym) {
@@ -180,10 +187,33 @@ ASTGraphNodeKind ASTGraphNodeKind::getFromNode(const SymExpr &Sym) {
 #define SYMBOL(Id, Parent)                                                     \
   case SymExpr::Id##Kind:                                                      \
     return ASTGraphNodeKind(NKI_##Id);
-  #define ABSTRACT_SYMBOL(Id, Parent) SYMBOL(Id, Parent)
+#define ABSTRACT_SYMBOL(Id, Parent) SYMBOL(Id, Parent)
 #include "clang/StaticAnalyzer/Core/PathSensitive/Symbols.def"
   }
-  llvm_unreachable("invalid type kind");
+  llvm_unreachable("Invalid SymExpr kind");
+}
+
+ASTGraphNodeKind ASTGraphNodeKind::getFromNode(const LocationContext &LCtx) {
+  switch (LCtx.getKind()) {
+  case LocationContext::StackFrame:
+    return ASTGraphNodeKind(NKI_StackFrameContext);
+  case LocationContext::Scope:
+    return ASTGraphNodeKind(NKI_ScopeContext);
+  case LocationContext::Block:
+    return ASTGraphNodeKind(NKI_BlockInvocationContext);
+  }
+  llvm_unreachable("Invalid LocationContext kind");
+}
+
+ASTGraphNodeKind ASTGraphNodeKind::getFromNode(const ProgramPoint &PP) {
+  switch (PP.getKind()) {
+#define PROGRAM_POINT(Id, Parent)                                              \
+  case ProgramPoint::Id##Kind:                                                 \
+    return ASTGraphNodeKind(NKI_##Id);
+#define ABSTRACT_PROGRAM_POINT(Id, Parent) PROGRAM_POINT(Id, Parent)
+#include "clang/Analysis/ProgramPoint.def"
+  }
+  llvm_unreachable("Invalid Program point kind");
 }
 
 void DynTypedNode::print(llvm::raw_ostream &OS,
@@ -235,6 +265,6 @@ SourceRange DynTypedNode::getSourceRange() const {
   return SourceRange();
 }
 
-} // end namespace ast_type_traits
+} // namespace ast_graph_type_traits
 } // end namespace ento
 } // end namespace clang
