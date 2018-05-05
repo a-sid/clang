@@ -30,7 +30,7 @@ namespace internal {
 constexpr MatcherID GraphBoundNodesTreeBuilder::TemporaryID;
 
 void GraphBoundNodesTreeBuilder::addMatches(ArrayRef<BoundNodes> Nodes) {
-  if (!Nodes.empty())
+  if (!Nodes.empty() && !Nodes[0].getMap().empty())
     Bounds.addMatches(CurrentNode, CurrentID, Nodes[0]);
 }
 
