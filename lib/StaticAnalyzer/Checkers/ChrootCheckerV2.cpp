@@ -35,7 +35,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 /*
 AST_MATCHER_P(FunctionDecl, isReachable,
               ast_matchers::internal::VariadicOperatorMatcherFunc<
@@ -71,7 +70,6 @@ public:
                         ExprEngine &Eng) const;
 };
 } // end anonymous namespace
-
 
 void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
                                        ExprEngine &Eng) const {
