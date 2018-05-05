@@ -3952,8 +3952,10 @@ AST_MATCHER_P(IfStmt, hasElse, internal::Matcher<Stmt>, InnerMatcher) {
 /// will trigger a match for each combination of variable declaration
 /// and reference to that variable declaration within a compound statement.
 AST_POLYMORPHIC_MATCHER_P(equalsBoundNode,
-                          AST_POLYMORPHIC_SUPPORTED_TYPES(Stmt, Decl, Type,
-                                                          QualType, ento::SVal),
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(
+                              Stmt, Decl, Type, QualType, ento::SVal,
+                              ProgramPoint, ento::ExplodedNode, ento::SymExpr,
+                              ento::MemRegion, LocationContext),
                           std::string, ID) {
   // FIXME: Figure out whether it makes sense to allow this
   // on any other node types.
