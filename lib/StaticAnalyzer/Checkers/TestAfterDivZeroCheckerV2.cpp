@@ -175,9 +175,12 @@ void TestAfterDivZeroCheckerV2::checkEndAnalysis(ExplodedGraph &G,
 
   Finder.addMatcher(
       hasSequence(
-          postStmt(hasStatement(binaryOperator(
-              isDivisionOp(),
-              hasRHS(hasValue(definedSVal(canBeZero()).bind("value")))))),
+          explodedNode(
+              postStmt(hasStatement(binaryOperator(
+                  isDivisionOp(),
+                  hasRHS(hasValue(definedSVal(canBeZero()).bind("value")))))),
+              hasStackFrame(stackFrameContext().bind("loc_ctx"))),
+          unless(callExitEnd(hasCalleeContext(equalsBoundNode("loc_ctx")))),
           postCondition(hasStatement(anyOf(
               binaryOperator(
                   isComparisonOp(),

@@ -178,6 +178,7 @@ const astm_internal::VariadicAllOfMatcher<ExplodedNode> explodedNode;
 const astm_internal::VariadicDynCastAllOfMatcher<SVal, DefinedSVal> definedSVal;
 const astm_internal::VariadicDynCastAllOfMatcher<MemRegion, StringRegion>
     stringRegion;
+const astm_internal::VariadicAllOfMatcher<LocationContext> locationContext;
 const astm_internal::VariadicDynCastAllOfMatcher<LocationContext,
                                                  StackFrameContext>
     stackFrameContext;
@@ -193,6 +194,9 @@ const astm_internal::VariadicDynCastAllOfMatcher<ProgramPoint, StmtPoint>
     stmtPoint;
 const astm_internal::VariadicDynCastAllOfMatcher<ProgramPoint, CallEnter>
     callEnter;
+const astm_internal::VariadicDynCastAllOfMatcher<ProgramPoint, CallExitEnd>
+    callExitEnd;
+
 } // end namespace path_matchers
 
 } // end namespace ento
