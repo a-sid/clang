@@ -89,13 +89,13 @@ void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
       callExpr(unless(callee(functionDecl(hasName("::chdir")))));
   Finder.addMatcher(
       hasSequence(
-          postStmtNode(statementNode(
+          postStmt(hasStatement(
               callExpr(callee(functionDecl(hasName("::chroot")))))),
-          unless(statementNode(callExpr(
+          unless(explodedNode(stmtPoint(hasStatement(callExpr(
               callee(functionDecl(hasName("::chdir"))),
-              hasArgument(0, hasValue(stringRegion(refersString("/"))))))),
-          explodedNode(anyOf(postStmtNode(statementNode(NotChdir)),
-                             callEnterNode(NotChdir)))),
+              hasArgument(0, hasValue(stringRegion(refersString("/"))))))))),
+          programPoint(anyOf(postStmt(hasStatement(NotChdir)),
+                             callEnter(hasCallExpr(NotChdir))))),
       &Callback);
   Finder.match(G, BR, Eng);
 }

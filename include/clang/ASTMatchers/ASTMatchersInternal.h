@@ -155,6 +155,19 @@ template <> struct SValContent<ento::MemRegion> {
   static const ento::MemRegion *get(ento::SVal SV) { return SV.getAsRegion(); }
 };
 
+template <typename SomeT> struct MemberAccessor;
+
+template <> struct MemberAccessor<ento::ProgramState> {
+  static const ento::ProgramState &get(const ento::ExplodedNode &Node) {
+    return *Node.getState();
+  }
+};
+
+template <> struct MemberAccessor<ProgramPoint> {
+  static ProgramPoint get(const ento::ExplodedNode &Node) {
+    return Node.getLocation();
+  }
+};
 
 /// Internal version of BoundNodes. Holds all the bound nodes.
 class BoundNodesMap {
@@ -557,6 +570,17 @@ public:
               * = nullptr)
       : Implementation(new SymbolOrRegionToSVal<SymbolOrRegionTy>(Other)) {}
 
+  /// \brief Implicitly converts \c Matcher<ProgramPoint>
+  /// or \c Matcher<ProgramState> to \c Matcher<SVal>.
+  template <typename StateOrPointTy>
+  Matcher(const Matcher<StateOrPointTy> &Other,
+          typename std::enable_if<
+              std::is_same<T, ento::ExplodedNode>::value &&
+              (std::is_same<StateOrPointTy, ento::ProgramState>::value ||
+               std::is_same<StateOrPointTy, ProgramPoint>::value)>::type
+              * = nullptr)
+      : Implementation(new ENodeAccessor<StateOrPointTy>(Other)) {}
+
   /// Convert \c this into a \c Matcher<T> by applying dyn_cast<> to the
   /// argument.
   /// \c To must be a base class of \c T.
@@ -626,6 +650,24 @@ public:
     }
   };
 
+  /// \brief Allows the conversion of a \c Matcher<SymExpr> and
+  /// \c Matcher<MemRegion> to a \c Matcher<SVal>.
+  template <typename AccessMemberTy>
+  class ENodeAccessor : public WrapperMatcherInterface<ento::ExplodedNode> {
+  public:
+    ENodeAccessor(const Matcher<AccessMemberTy> &InnerMatcher)
+        : ENodeAccessor::WrapperMatcherInterface(InnerMatcher) {}
+
+    bool matches(const ento::ExplodedNode &Node, ASTMatchFinder *Finder,
+                 BoundNodesTreeBuilder *Builder) const override {
+      const auto &Val = MemberAccessor<AccessMemberTy>::get(Node);
+      return this->InnerMatcher.matches(
+            ento::ast_graph_type_traits::DynTypedNode::create(Val), Finder,
+            Builder);
+      return false;
+    }
+  };
+
 private:
   // For Matcher<T> <=> Matcher<U> conversions.
   template <typename U> friend class Matcher;
@@ -672,9 +714,9 @@ inline Matcher<QualType> DynTypedMatcher::convertTo<QualType>() const {
   return unconditionalConvertTo<QualType>();
 }
 
-/// \brief Specialization of the conversion functions for QualType.
+/// \brief Specialization of the conversion functions for SVal.
 ///
-/// This specialization provides the Matcher<Type>->Matcher<QualType>
+/// This specialization provides the Matcher<MemRegion/SymExpr>->Matcher<SVal>
 /// conversion that the static API does.
 template <>
 inline Matcher<ento::SVal> DynTypedMatcher::convertTo<ento::SVal>() const {
@@ -693,6 +735,32 @@ inline Matcher<ento::SVal> DynTypedMatcher::convertTo<ento::SVal>() const {
          return unconditionalConvertTo<ento::SymExpr>();
     }
   return unconditionalConvertTo<ento::SVal>();
+}
+
+/// \brief Specialization of the conversion functions for QualType.
+///
+/// This specialization provides the Matcher<Type>->Matcher<QualType>
+/// conversion that the static API does.
+template <>
+inline Matcher<ento::ExplodedNode>
+DynTypedMatcher::convertTo<ento::ExplodedNode>() const {
+  assert(canConvertTo<ento::ExplodedNode>());
+  const ento::ast_graph_type_traits::ASTGraphNodeKind SourceKind =
+      getSupportedKind();
+  if (SourceKind.isSame(
+          ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<
+              ento::ProgramState>())) {
+    // We support implicit conversion from Matcher<ProgramState>
+    // to Matcher<ExplodedNode>
+    return unconditionalConvertTo<ento::ProgramState>();
+  } else if (SourceKind.isSame(
+                 ento::ast_graph_type_traits::ASTGraphNodeKind::getFromNodeKind<
+                     ProgramPoint>())) {
+    // We support implicit conversion from Matcher<ProgramPoint>
+    // to Matcher<ExplodedNode>
+    return unconditionalConvertTo<ProgramPoint>();
+  }
+  return unconditionalConvertTo<ento::ExplodedNode>();
 }
 
 /// Finds the first node in a range that matches the given matcher.
