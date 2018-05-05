@@ -61,6 +61,9 @@ extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<MemRegion,
                                                                  StringRegion>
     stringRegion;
 
+extern const ast_matchers::internal::VariadicAllOfMatcher<LocationContext>
+    locationContext;
+
 extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<
     LocationContext, StackFrameContext>
     stackFrameContext;
@@ -92,6 +95,10 @@ extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<ProgramPoint,
                                                                  CallEnter>
     callEnter;
 
+extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<ProgramPoint,
+                                                                 CallExitEnd>
+    callExitEnd;
+
 AST_MATCHER_P(StmtPoint, hasStatement, ast_matchers::StatementMatcher, Inner) {
   return Inner.matches(*Node.getStmt(), Finder, Builder);
 }
@@ -106,9 +113,17 @@ AST_MATCHER_P(CallEnter, hasCallExpr, ast_matchers::StatementMatcher, Inner) {
   return CE ? Inner.matches(*CE, Finder, Builder) : false;
 }
 
-AST_MATCHER_P(ExplodedNode, hasLocationContext,
-              ast_matchers::internal::Matcher<LocationContext>, Inner) {
+AST_POLYMORPHIC_MATCHER_P(hasLocationContext,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(ExplodedNode,
+                                                          ProgramPoint),
+                          ast_matchers::internal::Matcher<LocationContext>,
+                          Inner) {
   return Inner.matches(*Node.getLocationContext(), Finder, Builder);
+}
+
+AST_MATCHER_P(ExplodedNode, hasStackFrame,
+              ast_matchers::internal::Matcher<StackFrameContext>, Inner) {
+  return Inner.matches(*Node.getStackFrame(), Finder, Builder);
 }
 
 AST_MATCHER_P(LocationContext, isParentOfBound, std::string, ID) {
@@ -125,6 +140,16 @@ AST_MATCHER_P(LocationContext, isAncestorOfBound, std::string, ID) {
   if (const auto *LCtx = Found.get<LocationContext>())
     return LCtx->isParentOf(&Node);
   return false;
+}
+
+AST_MATCHER_P(LocationContext, hasCallee, ast_matchers::internal::Matcher<Decl>,
+              Inner) {
+  return Node.getDecl() && Inner.matches(*Node.getDecl(), Finder, Builder);
+}
+
+AST_MATCHER_P(CallExitEnd, hasCalleeContext,
+              ast_matchers::internal::Matcher<StackFrameContext>, Inner) {
+  return Inner.matches(*Node.getCalleeContext(), Finder, Builder);
 }
 
 AST_MATCHER_P(Stmt, hasValue, ast_matchers::internal::Matcher<SVal>, Inner) {

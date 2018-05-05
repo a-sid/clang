@@ -1251,7 +1251,9 @@ struct TypeListContainsSuperOf<EmptyTypeList, T> {
 /// Useful for matchers like \c anything and \c unless.
 using AllNodeBaseTypes =
     TypeList<Decl, Stmt, NestedNameSpecifier, NestedNameSpecifierLoc, QualType,
-             Type, TypeLoc, CXXCtorInitializer>;
+             Type, TypeLoc, CXXCtorInitializer, ento::SVal, ProgramPoint,
+             ento::ExplodedNode, ento::SymExpr, ento::MemRegion,
+             LocationContext>;
 
 /// Helper meta-function to extract the argument out of a function of
 ///   type void(Arg).
