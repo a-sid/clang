@@ -1,4 +1,4 @@
-//== TestAfterDivZeroChecker.cpp - Test after division by zero checker --*--==//
+//== TestAfterDivZeroCheckerV2.cpp - Test after division by zero checker -*-==//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,8 +7,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines TestAfterDivZeroChecker, a builtin check that performs checks
-//  for division by zero where the division occurs before comparison with zero.
+// This defines TestAfterDivZeroCheckerV2, a matcher-based builtin check that
+// performs checks for division by zero where the division occurs before
+// comparison with zero.
+// TODO: Support CFG-based analysis.
 //
 //===----------------------------------------------------------------------===//
 
@@ -31,37 +33,6 @@ template <typename T> using Matcher = ast_matchers::internal::Matcher<T>;
 using path_matchers::internal::createProxyCallback;
 
 namespace {
-
-class ZeroState {
-private:
-  SymbolRef ZeroSymbol;
-  unsigned BlockID;
-  const StackFrameContext *SFC;
-
-public:
-  ZeroState(SymbolRef S, unsigned B, const StackFrameContext *SFC)
-      : ZeroSymbol(S), BlockID(B), SFC(SFC) {}
-
-  const StackFrameContext *getStackFrameContext() const { return SFC; }
-
-  bool operator==(const ZeroState &X) const {
-    return BlockID == X.BlockID && SFC == X.SFC && ZeroSymbol == X.ZeroSymbol;
-  }
-
-  bool operator<(const ZeroState &X) const {
-    if (BlockID != X.BlockID)
-      return BlockID < X.BlockID;
-    if (SFC != X.SFC)
-      return SFC < X.SFC;
-    return ZeroSymbol < X.ZeroSymbol;
-  }
-
-  void Profile(llvm::FoldingSetNodeID &ID) const {
-    ID.AddInteger(BlockID);
-    ID.AddPointer(SFC);
-    ID.AddPointer(ZeroSymbol);
-  }
-};
 
 class DivisionBRVisitor : public BugReporterVisitorImpl<DivisionBRVisitor> {
 private:
