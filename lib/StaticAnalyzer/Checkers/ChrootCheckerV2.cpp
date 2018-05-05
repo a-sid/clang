@@ -89,9 +89,9 @@ void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
       hasSequence(
           postStmt(hasStatement(
               callExpr(callee(functionDecl(hasName("::chroot")))))),
-          unless(explodedNode(stmtPoint(hasStatement(callExpr(
+          unless(stmtPoint(hasStatement(callExpr(
               callee(functionDecl(hasName("::chdir"))),
-              hasArgument(0, hasValue(stringRegion(refersString("/"))))))))),
+              hasArgument(0, hasValue(stringRegion(refersString("/")))))))),
           programPoint(anyOf(postStmt(hasStatement(NotChdir)),
                              callEnter(hasCallExpr(NotChdir))))),
       &Callback);
