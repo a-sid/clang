@@ -3111,7 +3111,7 @@ struct DOTGraphTraits<ExplodedNode*> : public DefaultDOTGraphTraits {
         Out << "PreStmtPurgeDeadSymbols";
         break;
 
-      case ProgramPoint::EpsilonKind:
+      case ProgramPoint::EpsilonPointKind:
         Out << "Epsilon Point";
         break;
 

@@ -135,12 +135,12 @@ DivisionBRVisitor::VisitNode(const ExplodedNode *Succ, const ExplodedNode *Pred,
 }
 
 namespace {
-AST_MATCHER(DefinedSVal, isNotZero) {
+AST_MATCHER(DefinedSVal, canBeZero) {
   auto *Context = Finder->getContext<EGraphContext>();
   ConstraintManager &CM = Context->getConstraintManager();
   ProgramStateRef StTrue, StFalse;
   std::tie(StTrue, StFalse) = CM.assumeDual(Context->getState(), Node);
-  return !(StTrue && StFalse);
+  return StTrue && StFalse;
 }
 
 AST_MATCHER(BinaryOperator, isDivisionOp) {
@@ -175,10 +175,10 @@ void TestAfterDivZeroCheckerV2::checkEndAnalysis(ExplodedGraph &G,
 
   Finder.addMatcher(
       hasSequence(
-          postStmtNode(statementNode(binaryOperator(
+          postStmt(hasStatement(binaryOperator(
               isDivisionOp(),
-              hasRHS(hasValue(definedSVal(isNotZero()).bind("value")))))),
-          postConditionNode(statementNode(anyOf(
+              hasRHS(hasValue(definedSVal(canBeZero()).bind("value")))))),
+          postCondition(hasStatement(anyOf(
               binaryOperator(
                   isComparisonOp(),
                   hasBothOperands(

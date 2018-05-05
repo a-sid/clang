@@ -62,32 +62,69 @@ extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<MemRegion,
                                                                  StringRegion>
     stringRegion;
 
-AST_MATCHER_P(ExplodedNode, statementNode, ast_matchers::StatementMatcher,
-              Inner) {
-  if (auto StmtPP = Node.getLocationAs<StmtPoint>())
-    return Inner.matches(*StmtPP->getStmt(), Finder, Builder);
+extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<
+    LocationContext, StackFrameContext>
+    stackFrameContext;
+
+extern const ast_matchers::internal::VariadicAllOfMatcher<ProgramPoint>
+    programPoint;
+
+extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<ProgramPoint,
+                                                                 PreStmt>
+    preStmt;
+
+extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<ProgramPoint,
+                                                                 PostStmt>
+    postStmt;
+
+extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<ProgramPoint,
+                                                                 BlockEdge>
+    blockEdge;
+
+extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<ProgramPoint,
+                                                                 PostCondition>
+    postCondition;
+
+extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<ProgramPoint,
+                                                                 StmtPoint>
+    stmtPoint;
+
+extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<ProgramPoint,
+                                                                 CallEnter>
+    callEnter;
+
+AST_MATCHER_P(StmtPoint, hasStatement, ast_matchers::StatementMatcher, Inner) {
+  return Inner.matches(*Node.getStmt(), Finder, Builder);
+}
+
+AST_MATCHER_P(ExplodedNode, hasProgramPoint,
+              ast_matchers::internal::Matcher<ProgramPoint>, Inner) {
+  return Inner.matches(Node.getLocation(), Finder, Builder);
+}
+
+AST_MATCHER_P(CallEnter, hasCallExpr, ast_matchers::StatementMatcher, Inner) {
+  const Stmt *CE = Node.getCallExpr();
+  return CE ? Inner.matches(*CE, Finder, Builder) : false;
+}
+
+AST_MATCHER_P(ExplodedNode, hasLocationContext,
+              ast_matchers::internal::Matcher<LocationContext>, Inner) {
+  return Inner.matches(*Node.getLocationContext(), Finder, Builder);
+}
+
+AST_MATCHER_P(LocationContext, isParentOfBound, std::string, ID) {
+  EGraphContext *Context = Finder->getContext<EGraphContext>();
+  auto Found = Context->getBoundNode(ID);
+  if (const auto *LCtx = Found.get<LocationContext>())
+    return Node.isParentOf(LCtx);
   return false;
 }
 
-#define PROGRAM_POINT_MATCHER(Type, Name)                                      \
-  AST_MATCHER_P(ExplodedNode, Name, ExplodedNodeMatcher, Inner) {              \
-    if (auto PP = Node.getLocationAs<Type>())                                  \
-      return Inner.matches(Node, Finder, Builder);                             \
-    return false;                                                              \
-  }
-
-PROGRAM_POINT_MATCHER(PreStmt, preStmtNode)
-PROGRAM_POINT_MATCHER(PostStmt, postStmtNode)
-PROGRAM_POINT_MATCHER(BlockEdge, blockEdgeNode)
-PROGRAM_POINT_MATCHER(PostCondition, postConditionNode)
-
-#undef PROGRAM_POINT_MATCHER
-
-AST_MATCHER_P(ExplodedNode, callEnterNode, ast_matchers::StatementMatcher,
-              Inner) {
-  if (auto CallEnterPP = Node.getLocationAs<CallEnter>())
-    if (const Stmt *CE = CallEnterPP->getCallExpr())
-      return Inner.matches(*CE, Finder, Builder);
+AST_MATCHER_P(LocationContext, isAncestorOfBound, std::string, ID) {
+  EGraphContext *Context = Finder->getContext<EGraphContext>();
+  auto Found = Context->getBoundNode(ID);
+  if (const auto *LCtx = Found.get<LocationContext>())
+    return LCtx->isParentOf(&Node);
   return false;
 }
 

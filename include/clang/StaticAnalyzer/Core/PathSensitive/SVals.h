@@ -134,6 +134,10 @@ public:
     return !(*this == R);
   }
 
+  bool operator<(const SVal& R) const {
+    return Data < R.Data || (Data == R.Data && getRawKind() < R.getRawKind());
+  }
+
   bool isUnknown() const {
     return getRawKind() == UnknownValKind;
   }
