@@ -19,9 +19,8 @@
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
-#include "clang/StaticAnalyzer/Matchers//EGraphContext.h"
+#include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
 #include "clang/StaticAnalyzer/Matchers/GraphMatchFinder.h"
 #include "llvm/ADT/FoldingSet.h"
 
