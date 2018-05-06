@@ -30,34 +30,27 @@ using namespace ento;
 using namespace ast_matchers;
 using namespace path_matchers;
 template <typename T> using Matcher = ast_matchers::internal::Matcher<T>;
-using path_matchers::internal::createProxyCallback;
 
 namespace {
 
-class DivisionBRVisitor : public BugReporterVisitorImpl<DivisionBRVisitor> {
-private:
-  SymbolRef ZeroSymbol;
-  const StackFrameContext *SFC;
-  bool Satisfied;
+class DivisionBRVisitorV2 : public BugReporterVisitorImpl<DivisionBRVisitorV2> {
+  const ExplodedNode *DivisionNode;
 
 public:
-  DivisionBRVisitor(SymbolRef ZeroSymbol, const StackFrameContext *SFC)
-      : ZeroSymbol(ZeroSymbol), SFC(SFC), Satisfied(false) {}
+  DivisionBRVisitorV2(const ExplodedNode *DivisionNode)
+      : DivisionNode(DivisionNode) {}
 
   void Profile(llvm::FoldingSetNodeID &ID) const override {
-    ID.Add(ZeroSymbol);
-    ID.Add(SFC);
+    ID.AddPointer(DivisionNode);
   }
 
-  std::shared_ptr<PathDiagnosticPiece> VisitNode(const ExplodedNode *Succ,
-                                                 const ExplodedNode *Pred,
-                                                 BugReporterContext &BRC,
-                                                 BugReport &BR) override;
+  virtual std::shared_ptr<PathDiagnosticPiece>
+  VisitNode(const ExplodedNode *Succ, const ExplodedNode *Pred,
+            BugReporterContext &BRC, BugReport &BR) override;
 };
 
 class TestAfterDivZeroCheckerV2 : public Checker<check::EndAnalysis> {
   mutable std::unique_ptr<BuiltinBug> DivZeroBug;
-  void reportBug(SVal Val, CheckerContext &C) const;
 
 public:
   void checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
@@ -66,43 +59,23 @@ public:
 } // end anonymous namespace
 
 std::shared_ptr<PathDiagnosticPiece>
-DivisionBRVisitor::VisitNode(const ExplodedNode *Succ, const ExplodedNode *Pred,
-                             BugReporterContext &BRC, BugReport &BR) {
-  if (Satisfied)
+DivisionBRVisitorV2::VisitNode(const ExplodedNode *Succ,
+                               const ExplodedNode *Pred,
+                               BugReporterContext &BRC, BugReport &BR) {
+
+  if (BRC.getNodeResolver().getOriginalNode(Succ) != DivisionNode)
     return nullptr;
 
-  const Expr *E = nullptr;
+  // Construct a new PathDiagnosticPiece.
+  ProgramPoint P = Succ->getLocation();
+  PathDiagnosticLocation L =
+      PathDiagnosticLocation::create(P, BRC.getSourceManager());
 
-  if (Optional<PostStmt> P = Succ->getLocationAs<PostStmt>())
-    if (const BinaryOperator *BO = P->getStmtAs<BinaryOperator>()) {
-      BinaryOperator::Opcode Op = BO->getOpcode();
-      if (Op == BO_Div || Op == BO_Rem || Op == BO_DivAssign ||
-          Op == BO_RemAssign) {
-        E = BO->getRHS();
-      }
-    }
-
-  if (!E)
+  if (!L.isValid() || !L.asLocation().isValid())
     return nullptr;
 
-  ProgramStateRef State = Succ->getState();
-  SVal S = State->getSVal(E, Succ->getLocationContext());
-  if (ZeroSymbol == S.getAsSymbol() && SFC == Succ->getStackFrame()) {
-    Satisfied = true;
-
-    // Construct a new PathDiagnosticPiece.
-    ProgramPoint P = Succ->getLocation();
-    PathDiagnosticLocation L =
-        PathDiagnosticLocation::create(P, BRC.getSourceManager());
-
-    if (!L.isValid() || !L.asLocation().isValid())
-      return nullptr;
-
-    return std::make_shared<PathDiagnosticEventPiece>(
-        L, "Division with compared value made here");
-  }
-
-  return nullptr;
+  return std::make_shared<PathDiagnosticEventPiece>(
+      L, "Division with compared value made here");
 }
 
 namespace {
@@ -141,8 +114,22 @@ void TestAfterDivZeroCheckerV2::checkEndAnalysis(ExplodedGraph &G,
     FuncName = FD->getQualifiedNameAsString();
 
   path_matchers::GraphMatchFinder Finder(BR.getContext());
-  auto Callback = path_matchers::internal::createProxyCallback(
-      [&FuncName]() -> void { llvm::errs() << FuncName << " matches!\n"; });
+  auto Callback = createProxyCallback(
+        [&BR, this](const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
+    if (!DivZeroBug)
+      DivZeroBug.reset(new BuiltinBug(this, "Division by zero"));
+
+    const ExplodedNode *CompNode = BoundNodes.getNodeAs<ExplodedNode>("comp"),
+                       *DivNode = BoundNodes.getNodeAs<ExplodedNode>("div");
+    assert(CompNode && DivNode);
+    auto R = llvm::make_unique<BugReport>(
+        *DivZeroBug,
+        "Value being compared against zero has already been used for division",
+        CompNode);
+
+    R->addVisitor(llvm::make_unique<DivisionBRVisitorV2>(DivNode));
+    BR.emitReport(std::move(R));
+  });
 
   Finder.addMatcher(
       hasSequence(
@@ -150,22 +137,25 @@ void TestAfterDivZeroCheckerV2::checkEndAnalysis(ExplodedGraph &G,
               postStmt(hasStatement(binaryOperator(
                   isDivisionOp(),
                   hasRHS(hasValue(definedSVal(canBeZero()).bind("value")))))),
-              hasStackFrame(stackFrameContext().bind("loc_ctx"))),
+              hasStackFrame(stackFrameContext().bind("loc_ctx")))
+              .bind("div"),
           unless(callExitEnd(hasCalleeContext(equalsBoundNode("loc_ctx")))),
-          postCondition(hasStatement(anyOf(
-              binaryOperator(
-                  isComparisonOp(),
-                  hasBothOperands(
-                      ignoringParenImpCasts(integerLiteral(equals(0))),
-                      expr(hasValue(equalsBoundNode("value"))))),
-              unaryOperator(hasOperatorName("!"),
-                            hasUnaryOperand(anyOf(
-                                hasValue(equalsBoundNode("value")),
-                                implicitCastExpr(hasSourceExpression(
-                                    hasValue(equalsBoundNode("value"))))))),
-              implicitCastExpr(anyOf(
-                  hasValue(equalsBoundNode("value")),
-                  hasSourceExpression(hasValue(equalsBoundNode("value"))))))))),
+          explodedNode(
+              postCondition(hasStatement(anyOf(
+                  binaryOperator(
+                      isComparisonOp(),
+                      hasBothOperands(
+                          ignoringParenImpCasts(integerLiteral(equals(0))),
+                          expr(hasValue(equalsBoundNode("value"))))),
+                  unaryOperator(hasOperatorName("!"),
+                                hasUnaryOperand(anyOf(
+                                    hasValue(equalsBoundNode("value")),
+                                    implicitCastExpr(hasSourceExpression(
+                                        hasValue(equalsBoundNode("value"))))))),
+                  implicitCastExpr(anyOf(hasValue(equalsBoundNode("value")),
+                                         hasSourceExpression(hasValue(
+                                             equalsBoundNode("value")))))))))
+              .bind("comp")),
       &Callback);
   Finder.match(G, BR, Eng);
 }

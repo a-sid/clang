@@ -2689,8 +2689,10 @@ void BugReporter::emitReport(std::unique_ptr<BugReport> R) {
   if (const ExplodedNode *E = R->getErrorNode()) {
     // An error node must either be a sink or have a tag, otherwise
     // it could get reclaimed before the path diagnostic is created.
-    assert((E->isSink() || E->getLocation().getTag()) &&
-            "Error node must either be a sink or have a tag");
+    // FIXME: Matcher-based checks that check existing graphs don't need
+    // to set any tags.
+    //assert((E->isSink() || E->getLocation().getTag()) &&
+    //        "Error node must either be a sink or have a tag");
 
     const AnalysisDeclContext *DeclCtx =
         E->getLocationContext()->getAnalysisDeclContext();

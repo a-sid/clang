@@ -59,6 +59,7 @@ public:
 
   ast_graph_type_traits::DynTypedNode getBoundNode(StringRef ID);
 
+  ast_matchers::internal::BoundNodesMap getBoundNodes();
 private:
   GraphBoundNodesMap &Bounds;
   MatcherID CurrentID;
@@ -74,6 +75,16 @@ enum class MatchAction { Accept, Advance, RejectSingle, RejectForever, Pass };
 struct MatchResult {
   MatchAction Action;
   MatcherStateID NewStateID;
+
+  bool isReject() const {
+    return Action == MatchAction::RejectForever ||
+           Action == MatchAction::RejectSingle;
+  }
+
+  bool isAccept() const { return Action == MatchAction::Accept; }
+  bool isAdvance() const { return Action == MatchAction::Advance; }
+  bool isMatchSuccess() const { return isAccept() || isAdvance(); }
+  bool isPass() const { return Action == MatchAction::Pass; }
 };
 
 /// \brief Generic interface for all matchers.
@@ -268,8 +279,6 @@ struct VariadicOperatorPathMatcherFunc {
   }
 };
 
-class PathMatchCallback;
-
 using PathSensMatcher = PathMatcher<ExplodedNode>;
 
 MatchResult SequenceVariadicOperator(
@@ -315,11 +324,6 @@ public:
   VariadicSequentialPathMatcher() {}
 };
 
-class PathMatchCallback {
-public:
-  virtual void run() = 0;
-};
-
 template <typename NodeTy> class BindEntry {
   MatcherStateID StateID = 0;
   MatcherID MatchID;
@@ -342,21 +346,6 @@ public:
 
   PathMatcher<NodeTy> *Matcher;
 };
-
-
-template <typename CalleeTy>
-class ProxyMatchCallback : public PathMatchCallback {
-  CalleeTy Callee;
-
-public:
-  ProxyMatchCallback(CalleeTy Callee) : Callee(Callee) {}
-  virtual void run() override { Callee(); }
-};
-
-template <typename CalleeTy>
-ProxyMatchCallback<CalleeTy> createProxyCallback(CalleeTy Callee) {
-  return ProxyMatchCallback<CalleeTy>(Callee);
-}
 
 template <typename NodeTy>
 MatchResult
