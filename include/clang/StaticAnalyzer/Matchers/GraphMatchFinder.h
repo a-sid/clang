@@ -61,10 +61,20 @@ public:
     return Found->second;
   }
 
+  StoredItemTy &getOrCreateMatches(NodeTy Node, internal::MatcherID MatchID) {
+    return getGDM(Node)[MatchID];
+  }
+
+  std::pair<GDMTy::const_iterator, bool>
+  getMatches(NodeTy Node, internal::MatcherID MatchID) {
+    auto &GDM = getGDM(Node);
+    auto Found = GDM.find(MatchID);
+    return {Found, Found != GDM.end()};
+  }
+
   void addMatches(NodeTy Node, internal::MatcherID MatchID,
                   const ast_matchers::BoundNodes &Nodes) {
-    auto &GDM = getGDM(Node);
-    StoredItemTy &Entry = GDM[MatchID]; // Create if doesn't exist.
+    auto &Entry = getOrCreateMatches(Node, MatchID);
     for (const auto &Item : Nodes.getMap())
       Entry.addNode(Item.first, Item.second);
   }
@@ -74,6 +84,13 @@ private:
 };
 
 class GraphMatchFinder {
+public:
+  class PathMatchCallback {
+  public:
+    virtual void run(const GraphBoundNodesMap::StoredItemTy &BoundNodes) = 0;
+  };
+
+private:
   using EntryTy = internal::BindEntry<ExplodedNode>;
 
   class EntriesTy : public std::vector<EntryTy> {
@@ -90,14 +107,13 @@ class GraphMatchFinder {
   ASTContext &ASTCtx;
   EntriesTy Entries;
   GraphBoundNodesMap BoundMap;
-  std::map<internal::PathSensMatcher *, internal::PathMatchCallback *>
-      PathSensMatchers;
+  std::map<internal::PathSensMatcher *, PathMatchCallback *> PathSensMatchers;
 
 public:
   void match(const Decl *D);
   void match(ExplodedGraph &G, BugReporter &BR, ExprEngine &Eng);
   void addMatcher(const internal::PathSensMatcher &Matcher,
-                  internal::PathMatchCallback *Callback) {
+                  PathMatchCallback *Callback) {
     internal::PathSensMatcher *Copy = new internal::PathSensMatcher(Matcher);
     PathSensMatchers[Copy] = Callback;
   }
@@ -106,6 +122,24 @@ public:
   ASTContext &getASTContext() { return ASTCtx; }
   GraphMatchFinder(ASTContext &ASTCtx) : ASTCtx(ASTCtx) {}
 };
+
+template <typename CalleeTy>
+class ProxyMatchCallback : public GraphMatchFinder::PathMatchCallback {
+  CalleeTy Callee;
+
+public:
+  ProxyMatchCallback(CalleeTy Callee) : Callee(Callee) {}
+
+  virtual void
+  run(const GraphBoundNodesMap::StoredItemTy &BoundNodes) override {
+    Callee(BoundNodes);
+  }
+};
+
+template <typename CalleeTy>
+ProxyMatchCallback<CalleeTy> createProxyCallback(CalleeTy Callee) {
+  return ProxyMatchCallback<CalleeTy>(Callee);
+}
 
 } // end namespace path_matchers
 

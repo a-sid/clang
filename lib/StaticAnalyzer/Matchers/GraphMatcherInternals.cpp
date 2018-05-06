@@ -44,11 +44,16 @@ void GraphBoundNodesTreeBuilder::acceptTemporary(MatcherID NewID) {
 }
 
 DynTypedNode GraphBoundNodesTreeBuilder::getBoundNode(StringRef ID) {
-  auto &GDM = Bounds.getGDM(CurrentNode);
-  auto MatcherNodes = GDM.find(CurrentID);
-  if (MatcherNodes == GDM.end())
+  auto MatcherNodes = Bounds.getMatches(CurrentNode, CurrentID);
+  if (!MatcherNodes.second)
     return DynTypedNode();
-  return MatcherNodes->second.getNode(ID);
+  return MatcherNodes.first->second.getNode(ID);
+}
+
+astm_internal::BoundNodesMap GraphBoundNodesTreeBuilder::getBoundNodes() {
+  auto MatcherNodes = Bounds.getMatches(CurrentNode, CurrentID);
+  return MatcherNodes.second ? MatcherNodes.first->second
+                             : astm_internal::BoundNodesMap();
 }
 
 namespace {

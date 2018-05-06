@@ -80,8 +80,10 @@ void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
     FuncName = FD->getQualifiedNameAsString();
 
   path_matchers::GraphMatchFinder Finder(BR.getContext());
-  auto Callback = path_matchers::internal::createProxyCallback(
-      [&FuncName]() -> void { llvm::errs() << FuncName << " matches!\n"; });
+  auto Callback = createProxyCallback(
+      [&FuncName](const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
+        llvm::errs() << FuncName << " matches!\n";
+      });
 
   StatementMatcher NotChdir =
       callExpr(unless(callee(functionDecl(hasName("::chdir")))));
