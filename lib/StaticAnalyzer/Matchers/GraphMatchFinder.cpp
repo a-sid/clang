@@ -40,7 +40,7 @@ void GraphMatchFinder::advance(const ExplodedNode *Pred,
       break;
     case MatchAction::Accept: {
       auto *Callback = PathSensMatchers[Entry.Matcher];
-      Callback->run();
+      Callback->run(Builder.getBoundNodes());
     } // Fall-through
     case MatchAction::RejectSingle:
       Entries.erase(Entries.begin() + I);
@@ -56,19 +56,28 @@ void GraphMatchFinder::advance(const ExplodedNode *Pred,
     }
   }
 
+  SmallVector<PathSensMatcher *, 4> RejectedMatchers;
+
   // Check if a new item (StateID == 0) should be added.
   for (auto &MatchItem : PathSensMatchers) {
     PathSensMatcher *Matcher = MatchItem.first;
     auto Builder = GraphBoundNodesTreeBuilder::getTemporary(BoundMap, Succ);
     MatchResult Res = Matcher->matches(*Succ, this, &Builder, 0);
-    if (Res.Action == MatchAction::Advance) {
+    if (Res.isAdvance()) {
       const auto &NewEntry = Entries.addMatch(Matcher, Res.NewStateID);
       Builder.acceptTemporary(NewEntry.getMatchID());
-    } else if (Res.Action == MatchAction::Accept) {
+
+    } else if (Res.isAccept()) {
       auto *Callback = PathSensMatchers[Matcher];
-      Callback->run();
+      Callback->run(Builder.getBoundNodes());
+
+    } else if (Res.Action == MatchAction::RejectForever) {
+      RejectedMatchers.push_back(Matcher);
     }
   }
+
+  for (auto *Rej : RejectedMatchers)
+    PathSensMatchers.erase(Rej);
 }
 
 void GraphMatchFinder::match(ExplodedGraph &G, BugReporter &BR,
