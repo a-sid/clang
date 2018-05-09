@@ -20,7 +20,7 @@
 #include "llvm/ADT/GraphTraits.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/Support/GenericDomTree.h"
-#include "llvm/Support/GenericDomTreeConstruction.h" 
+#include "llvm/Support/GenericDomTreeConstruction.h"
 #include "llvm/Support/raw_ostream.h"
 
 // FIXME: There is no good reason for the domtree to require a print method
@@ -40,30 +40,24 @@ using DomTreeNode = llvm::DomTreeNodeBase<CFGBlock>;
 /// Concrete subclass of DominatorTreeBase for Clang
 /// This class implements the dominators tree functionality given a Clang CFG.
 ///
-class DominatorTree : public ManagedAnalysis {
+template <bool IsPostDom = false> class DominatorTree : public ManagedAnalysis {
   virtual void anchor();
 
 public:
-  llvm::DomTreeBase<CFGBlock> *DT;
+  llvm::DominatorTreeBase<CFGBlock, IsPostDom> *DT;
 
-  DominatorTree() {
-    DT = new llvm::DomTreeBase<CFGBlock>();
-  }
+  DominatorTree() { DT = new llvm::DominatorTreeBase<CFGBlock, IsPostDom>(); }
 
   ~DominatorTree() override { delete DT; }
 
-  llvm::DomTreeBase<CFGBlock>& getBase() { return *DT; }
+  llvm::DomTreeBase<CFGBlock> &getBase() { return *DT; }
 
   /// This method returns the root CFGBlock of the dominators tree.
-  CFGBlock *getRoot() const {
-    return DT->getRoot();
-  }
+  CFGBlock *getRoot() const { return DT->getRoot(); }
 
   /// This method returns the root DomTreeNode, which is the wrapper
   /// for CFGBlock.
-  DomTreeNode *getRootNode() const {
-    return DT->getRootNode();
-  }
+  DomTreeNode *getRootNode() const { return DT->getRootNode(); }
 
   /// This method compares two dominator trees.
   /// The method returns false if the other dominator tree matches this
@@ -92,15 +86,14 @@ public:
   /// mainly used for debug purposes.
   void dump() {
     llvm::errs() << "Immediate dominance tree (Node#,IDom#):\n";
-    for (CFG::const_iterator I = cfg->begin(),
-        E = cfg->end(); I != E; ++I) {
-      if(DT->getNode(*I)->getIDom())
-        llvm::errs() << "(" << (*I)->getBlockID()
-                     << ","
+    for (CFG::const_iterator I = cfg->begin(), E = cfg->end(); I != E; ++I) {
+      if (DT->getNode(*I)->getIDom())
+        llvm::errs() << "(" << (*I)->getBlockID() << ","
                      << DT->getNode(*I)->getIDom()->getBlock()->getBlockID()
                      << ")\n";
-      else llvm::errs() << "(" << (*I)->getBlockID()
-                        << "," << (*I)->getBlockID() << ")\n";
+      else
+        llvm::errs() << "(" << (*I)->getBlockID() << "," << (*I)->getBlockID()
+                     << ")\n";
     }
   }
 
@@ -141,12 +134,10 @@ public:
   }
 
   /// This method releases the memory held by the dominator tree.
-  virtual void releaseMemory() {
-    DT->releaseMemory();
-  }
+  virtual void releaseMemory() { DT->releaseMemory(); }
 
   /// This method converts the dominator tree to human readable form.
-  virtual void print(raw_ostream &OS, const llvm::Module* M= nullptr) const {
+  virtual void print(raw_ostream &OS, const llvm::Module *M = nullptr) const {
     DT->print(OS);
   }
 
@@ -162,7 +153,7 @@ private:
 ///
 namespace llvm {
 
-template <> struct GraphTraits< ::clang::DomTreeNode* > {
+template <> struct GraphTraits<::clang::DomTreeNode *> {
   using NodeRef = ::clang::DomTreeNode *;
   using ChildIteratorType = ::clang::DomTreeNode::iterator;
 
@@ -182,17 +173,18 @@ template <> struct GraphTraits< ::clang::DomTreeNode* > {
   }
 };
 
-template <> struct GraphTraits< ::clang::DominatorTree* >
-    : public GraphTraits< ::clang::DomTreeNode* > {
-  static NodeRef getEntryNode(::clang::DominatorTree *DT) {
+template <bool IsPostDom>
+struct GraphTraits<::clang::DominatorTree<IsPostDom> *>
+    : public GraphTraits<::clang::DomTreeNode *> {
+  static NodeRef getEntryNode(::clang::DominatorTree<IsPostDom> *DT) {
     return DT->getRootNode();
   }
 
-  static nodes_iterator nodes_begin(::clang::DominatorTree *N) {
+  static nodes_iterator nodes_begin(::clang::DominatorTree<IsPostDom> *N) {
     return nodes_iterator(df_begin(getEntryNode(N)));
   }
 
-  static nodes_iterator nodes_end(::clang::DominatorTree *N) {
+  static nodes_iterator nodes_end(::clang::DominatorTree<IsPostDom> *N) {
     return nodes_iterator(df_end(getEntryNode(N)));
   }
 };
