@@ -11,4 +11,5 @@
 
 using namespace clang;
 
-void DominatorTree::anchor() {}
+template <> void DominatorTree<true>::anchor() {}
+template <> void DominatorTree<false>::anchor() {}
