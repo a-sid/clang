@@ -94,8 +94,8 @@ void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
           unless(stmtPoint(hasStatement(callExpr(
               callee(functionDecl(hasName("::chdir"))),
               hasArgument(0, hasValue(stringRegion(refersString("/")))))))),
-          programPoint(anyOf(postStmt(hasStatement(NotChdir)),
-                             callEnter(hasCallExpr(NotChdir))))),
+          anyOf(postStmt(hasStatement(NotChdir)),
+                callEnter(hasCallExpr(NotChdir)))),
       &Callback);
   Finder.match(G, BR, Eng);
 }
