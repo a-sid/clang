@@ -72,6 +72,8 @@ public:
   static ASTGraphNodeKind getFromNode(const SymExpr &Sym);
   static ASTGraphNodeKind getFromNode(const LocationContext &LCtx);
   static ASTGraphNodeKind getFromNode(const ProgramPoint &PP);
+  static ASTGraphNodeKind getFromNode(const CFGBlock &CB);
+  static ASTGraphNodeKind getFromNode(const CFGElement &CE);
 
   /// \}
 
@@ -154,6 +156,8 @@ public:
     NKI_Type,
 #define TYPE(DERIVED, BASE) NKI_##DERIVED##Type,
 #include "clang/AST/TypeNodes.def"
+    NKI_CFGBlock,
+    NKI_CFGElement,
     NKI_ExplodedNode,
     NKI_ProgramState,
     NKI_MemRegion,
@@ -239,6 +243,8 @@ KIND_TO_KIND_ID(Type)
 #define TYPE(DERIVED, BASE) KIND_TO_KIND_ID(DERIVED##Type)
 #include "clang/AST/TypeNodes.def"
 
+KIND_TO_KIND_ID(CFGBlock)
+KIND_TO_KIND_ID(CFGElement)
 KIND_TO_KIND_ID(ExplodedNode)
 KIND_TO_KIND_ID(ProgramState)
 KIND_TO_KIND_ID(SVal)
