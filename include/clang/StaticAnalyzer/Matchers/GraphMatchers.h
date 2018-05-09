@@ -18,12 +18,13 @@
 #define LLVM_CLANG_ENTO_MATCHERS_GRAPHMATCHERS_H
 
 #include "clang/ASTMatchers/ASTGraphTypeTraits.h"
+#include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/ASTMatchers/ASTMatchers.h"
+#include "clang/Analysis/Analyses/Dominators.h"
+#include "clang/Analysis/CFGStmtMap.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 #include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
 #include "clang/StaticAnalyzer/Matchers/GraphMatcherInternals.h"
-
-#include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/ASTMatchers/ASTMatchers.h"
 
 #include "llvm/ADT/StringMap.h"
 
@@ -162,10 +163,70 @@ AST_MATCHER_P(StringRegion, refersString, std::string, String) {
   return Node.getStringLiteral()->getString() == String;
 }
 
+inline const Decl *getParentFunction(ASTContext &ASTCtx, const Stmt &S) {
+  using namespace ast_matchers;
+  auto FuncFinder = stmt(hasAncestor(functionDecl().bind("func")));
+  return selectFirst<Decl>("func", match(FuncFinder, S, ASTCtx));
+  /*  ast_type_traits::DynTypedNode Node =
+    ast_type_traits::DynTypedNode::create(S); auto Parents =
+    ASTCtx.getParents(S); while (!Parents.empty()) { const auto &Parent =
+    Parents[0]; if (const auto *FD = Parent.get < FunctionDecl) return FD; Node
+    = Parent;
+    }
+    return nullptr;*/
+}
+
+inline size_t getCFGBlockIndex(const CFGBlock &Block, const Stmt *S) {
+  size_t Idx = 0;
+  for (const CFGElement &Elem : Block) {
+    if (auto StmtElem = Elem.getAs<CFGStmt>())
+      if (StmtElem->getStmt() == S)
+        return Idx;
+    ++Idx;
+  }
+  llvm_unreachable("The statement doesn't belong to the block!");
+}
+
+AST_MATCHER_P(Stmt, postDominatesBoundLocal, std::string, ID) {
+  EGraphContext *Context = Finder->getContext<EGraphContext>();
+  auto Found = Context->getBoundNode(ID);
+  const Stmt *Bound = Found.get<Stmt>();
+  if (!Bound)
+    return false;
+
+  // FIXME: Finder can already have a memoization data for parents, reuse it.
+  ASTContext &ASTCtx = Finder->getASTContext();
+  const Decl *NodeParentFunc = getParentFunction(ASTCtx, Node),
+             *BoundParentFunc = getParentFunction(ASTCtx, *Bound);
+  if (NodeParentFunc != BoundParentFunc)
+    return false;
+
+  auto *ADC = Context->getAnalysisDeclContext(NodeParentFunc);
+  if (!ADC)
+    return false;
+
+  CFG *Cfg = ADC->getCFG();
+  if (!Cfg)
+    return false;
+
+  CFGStmtMap *CSMap = ADC->getCFGStmtMap();
+  assert(CSMap && "Can only be null if CFG is nullptr!");
+
+  const CFGBlock *NodeBlock = CSMap->getBlock(&Node),
+                 *BoundBlock = CSMap->getBlock(Bound);
+  if (NodeBlock == BoundBlock)
+    return getCFGBlockIndex(*NodeBlock, &Node) >
+           getCFGBlockIndex(*NodeBlock, Bound);
+
+  DominatorTree<true> Dom;
+  Dom.buildDominatorTree(*ADC);
+  return Dom.dominates(NodeBlock, BoundBlock);
+}
+
 } // end namespace path_matchers
 
-} // end namespace ento
+} // namespace ento
 
-} // end namespace clang
+} // namespace clang
 
 #endif // LLVM_CLANG_ENTO_MATCHERS_GRAPHMATCHERS_H

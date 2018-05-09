@@ -31,6 +31,8 @@ namespace clang {
 
 namespace ento {
 
+class AnalysisManager;
+
 class EGraphContext : public ast_matchers::internal::MatchFinderContext {
 public:
   EGraphContext(path_matchers::internal::GraphBoundNodesTreeBuilder &Builder,
@@ -80,6 +82,13 @@ public:
   virtual ast_graph_type_traits::DynTypedNode
   getBoundNode(StringRef ID) override;
 
+  AnalysisDeclContext *getAnalysisDeclContext() {
+    return getLocationContext()->getAnalysisDeclContext();
+  }
+
+  AnalysisDeclContext *getAnalysisDeclContext(const Decl *D);
+  AnalysisManager &getAnalysisManager();
+
 private:
   const ExplodedNode *CurrentNode;
   ProgramStateRef State;
@@ -87,6 +96,6 @@ private:
   path_matchers::internal::GraphBoundNodesTreeBuilder &Builder;
 };
 } // end namespace ento
-} // end namepace clang
+} // namespace clang
 
 #endif // LLVM_CLANG_ENTO_MATCHERS_EGRAPHCONTEXT_H
