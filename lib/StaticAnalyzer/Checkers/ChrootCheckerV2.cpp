@@ -14,56 +14,21 @@
 //===----------------------------------------------------------------------===//
 
 #include "ClangSACheckers.h"
+#include "clang/ASTMatchers/ASTMatchers.h"
+#include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
-#include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
 #include "clang/StaticAnalyzer/Matchers/GraphMatchFinder.h"
-
-#include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/ASTMatchers/ASTMatchers.h"
 
 using namespace clang;
 using namespace ento;
-using namespace llvm;
 using namespace ast_matchers;
 using namespace path_matchers;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-/*
-AST_MATCHER_P(FunctionDecl, isReachable,
-              ast_matchers::internal::VariadicOperatorMatcherFunc<
-              2, std::numeric_limits<unsigned>::max()> InnerMatcher) {
-  InnerMatcher.
-}
-
-auto LockMatcher =
-    isReachable(
-      stmt(
-        callExpr(
-          hasDeclaration(
-            functionDecl(hasName("pthread_mutex_lock"))),
-          hasArgValue(0,
-                      value(isKnown(),
-                            ).bind("mutex")))),
-      unless(
-        stmt(
-          callExpr(
-            hasDeclaration(
-              functionDecl(hasName("pthread_mutex_unlock"))),
-            hasArgValue(0, equalsBoundNode("mutex"))))),
-      stmt(
-        callExpr(
-          hasDeclaration(
-            functionDecl(hasName("pthread_mutex_lock"))),
-          hasArgValue(0,equalsBoundNode("mutex")))));
-*/
 class ChrootCheckerV2 : public Checker<check::EndAnalysis> {
+  mutable std::unique_ptr<BuiltinBug> BT_BreakJail;
 
 public:
   void checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
@@ -73,16 +38,16 @@ public:
 
 void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
                                        ExprEngine &Eng) const {
-  ExplodedNode *Root = *G.roots_begin();
-  const Decl *D = Root->getStackFrame()->getDecl();
-  std::string FuncName;
-  if (const NamedDecl *FD = dyn_cast<NamedDecl>(D))
-    FuncName = FD->getQualifiedNameAsString();
-
   path_matchers::GraphMatchFinder Finder(BR.getContext());
   auto Callback = createProxyCallback(
-      [&FuncName](const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
-        llvm::errs() << FuncName << " matches!\n";
+      [&BR, this](const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
+        const ExplodedNode *N = BoundNodes.getNodeAs<ExplodedNode>("bug_node");
+        if (!BT_BreakJail)
+          BT_BreakJail.reset(new BuiltinBug(
+              this, "Break out of jail",
+              "No call of chdir(\"/\") immediately after chroot"));
+        BR.emitReport(llvm::make_unique<BugReport>(
+            *BT_BreakJail, BT_BreakJail->getDescription(), N));
       });
 
   StatementMatcher NotChdir =
@@ -94,8 +59,9 @@ void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
           unless(stmtPoint(hasStatement(callExpr(
               callee(functionDecl(hasName("::chdir"))),
               hasArgument(0, hasValue(stringRegion(refersString("/")))))))),
-          anyOf(postStmt(hasStatement(NotChdir)),
-                callEnter(hasCallExpr(NotChdir)))),
+          explodedNode(anyOf(postStmt(hasStatement(NotChdir)),
+                             callEnter(hasCallExpr(NotChdir))))
+              .bind("bug_node")),
       &Callback);
   Finder.match(G, BR, Eng);
 }

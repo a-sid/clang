@@ -1,4 +1,5 @@
 // RUN: %clang_analyze_cc1 -analyzer-checker=alpha.unix.Chroot -analyzer-store region -verify %s
+// RUN: %clang_analyze_cc1 -analyzer-checker=alpha.unix.ChrootV2 %s
 
 extern int chroot(const char* path);
 extern int chdir(const char* path);
