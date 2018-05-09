@@ -39,6 +39,8 @@ const ASTGraphNodeKind::KindInfo ASTGraphNodeKind::AllKindInfo[] = {
     {NKI_None, "Type"},
 #define TYPE(DERIVED, BASE) {NKI_##BASE, #DERIVED "Type"},
 #include "clang/AST/TypeNodes.def"
+    {NKI_None, "CFGBlock"},
+    {NKI_None, "CFGElement"},
     {NKI_None, "ExplodedNode"},
     {NKI_None, "ProgramState"},
     {NKI_None, "MemRegion"},
