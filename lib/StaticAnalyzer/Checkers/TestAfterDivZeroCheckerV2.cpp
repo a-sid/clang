@@ -113,13 +113,16 @@ void TestAfterDivZeroCheckerV2::checkEndAnalysis(ExplodedGraph &G,
     FuncName = FD->getQualifiedNameAsString();
 
   path_matchers::GraphMatchFinder Finder(BR.getContext());
-  auto Callback = createProxyCallback(
-        [&BR, this](const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
+  auto Callback = createProxyCallback([&BR, this](
+                                          const GraphBoundNodesMap::StoredItemTy
+                                              &BoundNodes) {
     if (!DivZeroBug)
       DivZeroBug.reset(new BuiltinBug(this, "Division by zero"));
 
-    const ExplodedNode *CompNode = BoundNodes.getNodeAs<ExplodedNode>("comp"),
-                       *DivNode = BoundNodes.getNodeAs<ExplodedNode>("div");
+    const ExplodedNode *CompNode =
+                           BoundNodes.getNodeAs<ExplodedNode>("comp_node"),
+                       *DivNode =
+                           BoundNodes.getNodeAs<ExplodedNode>("div_node");
     assert(CompNode && DivNode);
     auto R = llvm::make_unique<BugReport>(
         *DivZeroBug,
@@ -133,28 +136,33 @@ void TestAfterDivZeroCheckerV2::checkEndAnalysis(ExplodedGraph &G,
   Finder.addMatcher(
       hasSequence(
           explodedNode(
-              postStmt(hasStatement(binaryOperator(
-                  isDivisionOp(),
-                  hasRHS(hasValue(definedSVal(canBeZero()).bind("value")))))),
+              postStmt(hasStatement(
+                  binaryOperator(
+                      isDivisionOp(),
+                      hasRHS(hasValue(definedSVal(canBeZero()).bind("value"))))
+                      .bind("div_binop"))),
               hasStackFrame(stackFrameContext().bind("loc_ctx")))
-              .bind("div"),
+              .bind("div_node"),
           unless(callExitEnd(hasCalleeContext(equalsBoundNode("loc_ctx")))),
           explodedNode(
-              postCondition(hasStatement(anyOf(
-                  binaryOperator(
-                      isComparisonOp(),
-                      hasBothOperands(
-                          ignoringParenImpCasts(integerLiteral(equals(0))),
-                          expr(hasValue(equalsBoundNode("value"))))),
-                  unaryOperator(hasOperatorName("!"),
-                                hasUnaryOperand(anyOf(
-                                    hasValue(equalsBoundNode("value")),
+              postCondition(hasStatement(allOf(
+                  anyOf(
+                      binaryOperator(
+                          isComparisonOp(),
+                          hasBothOperands(
+                              ignoringParenImpCasts(integerLiteral(equals(0))),
+                              expr(hasValue(equalsBoundNode("value"))))),
+                      unaryOperator(
+                          hasOperatorName("!"),
+                          hasUnaryOperand(
+                              anyOf(hasValue(equalsBoundNode("value")),
                                     implicitCastExpr(hasSourceExpression(
                                         hasValue(equalsBoundNode("value"))))))),
-                  implicitCastExpr(anyOf(hasValue(equalsBoundNode("value")),
-                                         hasSourceExpression(hasValue(
-                                             equalsBoundNode("value")))))))))
-              .bind("comp")),
+                      implicitCastExpr(anyOf(hasValue(equalsBoundNode("value")),
+                                             hasSourceExpression(hasValue(
+                                                 equalsBoundNode("value")))))),
+                  postDominatesBoundLocal("div_binop")))))
+              .bind("comp_node")),
       &Callback);
   Finder.match(G, BR, Eng);
 }

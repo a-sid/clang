@@ -14,12 +14,23 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/MemRegion.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState_Fwd.h"
+#include "clang/Analysis/AnalysisDeclContext.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/AnalysisManager.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/SubEngine.h"
 
+using namespace clang;
 using namespace clang::ento;
 
 ast_graph_type_traits::DynTypedNode
 EGraphContext::getBoundNode(llvm::StringRef ID) {
   return Builder.getBoundNode(ID);
+}
+
+AnalysisManager &EGraphContext::getAnalysisManager() {
+  return StateMgr.getOwningEngine()->getAnalysisManager();
+}
+
+AnalysisDeclContext *EGraphContext::getAnalysisDeclContext(const Decl *D) {
+  return getAnalysisManager().getAnalysisDeclContext(D);
 }
