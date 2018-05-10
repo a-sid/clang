@@ -10,16 +10,14 @@
 // This defines TestAfterDivZeroCheckerV2, a matcher-based builtin check that
 // performs checks for division by zero where the division occurs before
 // comparison with zero.
-// TODO: Support CFG-based analysis.
 //
 //===----------------------------------------------------------------------===//
 
 #include "ClangSACheckers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/ASTMatchers/ASTMatchers.h"
+#include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 #include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
 #include "clang/StaticAnalyzer/Matchers/GraphMatchFinder.h"
 #include "llvm/ADT/FoldingSet.h"
@@ -45,7 +43,21 @@ public:
 
   virtual std::shared_ptr<PathDiagnosticPiece>
   VisitNode(const ExplodedNode *Succ, const ExplodedNode *Pred,
-            BugReporterContext &BRC, BugReport &BR) override;
+            BugReporterContext &BRC, BugReport &BR) override {
+    if (BRC.getNodeResolver().getOriginalNode(Succ) != DivisionNode)
+      return nullptr;
+
+    // Construct a new PathDiagnosticPiece.
+    ProgramPoint P = Succ->getLocation();
+    PathDiagnosticLocation L =
+        PathDiagnosticLocation::create(P, BRC.getSourceManager());
+
+    if (!L.isValid() || !L.asLocation().isValid())
+      return nullptr;
+
+    return std::make_shared<PathDiagnosticEventPiece>(
+        L, "Division with compared value made here");
+  }
 };
 
 class TestAfterDivZeroCheckerV2 : public Checker<check::EndAnalysis> {
@@ -55,29 +67,7 @@ public:
   void checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
                         ExprEngine &Eng) const;
 };
-} // end anonymous namespace
 
-std::shared_ptr<PathDiagnosticPiece>
-DivisionBRVisitorV2::VisitNode(const ExplodedNode *Succ,
-                               const ExplodedNode *Pred,
-                               BugReporterContext &BRC, BugReport &BR) {
-
-  if (BRC.getNodeResolver().getOriginalNode(Succ) != DivisionNode)
-    return nullptr;
-
-  // Construct a new PathDiagnosticPiece.
-  ProgramPoint P = Succ->getLocation();
-  PathDiagnosticLocation L =
-      PathDiagnosticLocation::create(P, BRC.getSourceManager());
-
-  if (!L.isValid() || !L.asLocation().isValid())
-    return nullptr;
-
-  return std::make_shared<PathDiagnosticEventPiece>(
-      L, "Division with compared value made here");
-}
-
-namespace {
 AST_MATCHER(DefinedSVal, canBeZero) {
   auto *Context = Finder->getContext<EGraphContext>();
   ConstraintManager &CM = Context->getConstraintManager();
@@ -106,16 +96,9 @@ inline Matcher<BinaryOperator> hasBothOperands(const Matcher<Expr> &Matcher1,
 void TestAfterDivZeroCheckerV2::checkEndAnalysis(ExplodedGraph &G,
                                                  BugReporter &BR,
                                                  ExprEngine &Eng) const {
-  ExplodedNode *Root = *G.roots_begin();
-  const Decl *D = Root->getStackFrame()->getDecl();
-  std::string FuncName;
-  if (const NamedDecl *FD = dyn_cast<NamedDecl>(D))
-    FuncName = FD->getQualifiedNameAsString();
-
   path_matchers::GraphMatchFinder Finder(BR.getContext());
-  auto Callback = createProxyCallback([&BR, this](
-                                          const GraphBoundNodesMap::StoredItemTy
-                                              &BoundNodes) {
+  auto Callback = createProxyCallback(
+        [&BR, this](const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
     if (!DivZeroBug)
       DivZeroBug.reset(new BuiltinBug(this, "Division by zero"));
 
