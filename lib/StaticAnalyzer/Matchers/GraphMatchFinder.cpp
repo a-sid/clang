@@ -1,5 +1,4 @@
-//===--- GraphMatchFinder.cpp - Structural query framework
-//------------------===//
+//===--- GraphMatchFinder.cpp - Structural query framework ----------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
