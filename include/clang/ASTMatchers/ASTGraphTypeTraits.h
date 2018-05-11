@@ -1,4 +1,4 @@
-//===--- ASTTypeTraits.h ----------------------------------------*- C++ -*-===//
+//===--- ASTGraphTypeTraits.h -----------------------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,8 +8,11 @@
 //===----------------------------------------------------------------------===//
 //
 //  Provides a dynamic type identifier and a dynamically typed node container
-//  that can be used to store an AST base node at runtime in the same storage in
-//  a type safe way.
+//  that can be used to store an AST graph base node at runtime in the same
+//  storage in a type safe way.
+//
+//  FIXME: This may need to be merged into ASTTypeTraits to avoid massive
+//  code duplication.
 //
 //===----------------------------------------------------------------------===//
 

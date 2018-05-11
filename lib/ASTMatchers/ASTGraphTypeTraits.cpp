@@ -1,4 +1,4 @@
-//===--- ASTTypeTraits.cpp --------------------------------------*- C++ -*-===//
+//===--- ASTGraphTypeTraits.cpp ---------------------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,8 +8,11 @@
 //===----------------------------------------------------------------------===//
 //
 //  Provides a dynamic type identifier and a dynamically typed node container
-//  that can be used to store an AST base node at runtime in the same storage in
-//  a type safe way.
+//  that can be used to store an AST graph base node at runtime in the same
+//  storage in a type safe way.
+//
+//  FIXME: This may need to be merged into ASTTypeTraits to avoid massive
+//  code duplication.
 //
 //===----------------------------------------------------------------------===//
 
@@ -238,7 +241,16 @@ void DynTypedNode::print(llvm::raw_ostream &OS,
     S->printPretty(OS, nullptr, PP);
   else if (const Type *T = get<Type>())
     QualType(T, 0).print(OS, PP);
+  else if (const ProgramState *State = get<ProgramState>())
+    State->print(OS);
+  else if (const SVal *SV = get<SVal>())
+    SV->dumpToStream(OS);
+  else if (const MemRegion *MR = get<MemRegion>())
+    MR->printPretty(OS);
+  else if (const SymExpr *SE = get<SymExpr>())
+    SE->dumpToStream(OS);
   else
+    // FIXME:ProgramPoint, etc.
     OS << "Unable to print values of type " << NodeKind.asStringRef() << "\n";
 }
 
@@ -249,6 +261,14 @@ void DynTypedNode::dump(llvm::raw_ostream &OS, SourceManager &SM) const {
     S->dump(OS, SM);
   else if (const Type *T = get<Type>())
     T->dump(OS);
+  else if (const ProgramState *State = get<ProgramState>())
+    State->print(OS);
+  else if (const SVal *SV = get<SVal>())
+    SV->dumpToStream(OS);
+  else if (const MemRegion *MR = get<MemRegion>())
+    MR->printPretty(OS);
+  else if (const SymExpr *SE = get<SymExpr>())
+    SE->dumpToStream(OS);
   else
     OS << "Unable to dump values of type " << NodeKind.asStringRef() << "\n";
 }
@@ -264,6 +284,8 @@ SourceRange DynTypedNode::getSourceRange() const {
     return D->getSourceRange();
   if (const Stmt *S = get<Stmt>())
     return S->getSourceRange();
+  // Graph nodes don't have source ranges because they don't relate
+  // to the source code.
   return SourceRange();
 }
 
