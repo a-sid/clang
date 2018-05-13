@@ -38,7 +38,7 @@ class GraphMatchFinder;
 
 namespace internal {
 
-typedef size_t MatcherID;
+using MatcherID = size_t;
 
 class GraphBoundNodesTreeBuilder {
   using NodeTy = const ExplodedNode *;
@@ -60,6 +60,7 @@ public:
   ast_graph_type_traits::DynTypedNode getBoundNode(StringRef ID);
 
   ast_matchers::internal::BoundNodesMap getBoundNodes();
+
 private:
   GraphBoundNodesMap &Bounds;
   MatcherID CurrentID;
@@ -67,7 +68,7 @@ private:
   static constexpr MatcherID TemporaryID = -1;
 };
 
-typedef size_t MatcherStateID;
+using MatcherStateID = size_t;
 const MatcherStateID StateInvalid = std::numeric_limits<MatcherStateID>::max();
 
 enum class MatchAction { Accept, Advance, RejectSingle, RejectForever, Pass };
@@ -89,9 +90,8 @@ struct MatchResult {
 
 /// \brief Generic interface for all matchers.
 ///
-/// Used by the implementation of Matcher<T> and DynTypedMatcher.
-/// In general, implement MatcherInterface<T> or SingleNodeMatcherInterface<T>
-/// instead.
+/// Used by the implementation of PathMatcher<T> and DynTypedpathMatcher.
+/// In general, implement PathMatcherInterface<T> instead.
 class DynPathMatcherInterface
     : public llvm::ThreadSafeRefCountedBase<DynPathMatcherInterface> {
 public:
@@ -147,6 +147,7 @@ public:
       IntrusiveRefCntPtr<DynPathMatcherInterface> Implementation)
       : Implementation(std::move(Implementation)) {}
 
+  // FIXME: Support bindings to paths.
   void setAllowBind(bool AB) { AllowBind = AB; }
 
   /// \brief Returns true if the matcher matches the given \c DynNode.
@@ -165,14 +166,9 @@ private:
   IntrusiveRefCntPtr<DynPathMatcherInterface> Implementation;
 };
 
-/// \brief Wrapper of a MatcherInterface<T> *that allows copying.
-///
-/// A Matcher<Base> can be used anywhere a Matcher<Derived> is
-/// required. This establishes an is-a relationship which is reverse
-/// to the AST hierarchy. In other words, Matcher<T> is contravariant
-/// with respect to T. The relationship is built via a type conversion
-/// operator rather than a type hierarchy to be able to templatize the
-/// type hierarchy instead of spelling it out.
+/// \brief Wrapper of a PathMatcherInterface<T> *that allows copying.
+/// For now, dynamic conversions between pathMatches for different node kinds
+/// are not supported.
 template <typename T> class PathMatcher {
 public:
   /// \brief Takes ownership of the provided implementation pointer.
@@ -204,9 +200,6 @@ public:
   operator DynTypedPathMatcher() const { return Implementation; }
 
 private:
-  // For DynTypedMatcher::unconditionalConvertTo<T>.
-  friend class DynTypedPathMatcher;
-
   DynTypedPathMatcher Implementation;
 }; // class PathMatcher
 
@@ -294,12 +287,12 @@ PathMatcher<NodeTy> makeSequentialComposite(
   // For the size() == 0 case, we return a "true" matcher.
   if (InnerMatchers.empty()) {
     //   return PathMatcher<T>(TrueMatcher());
-    assert(false && "Not implemented yet!");
+    llvm_unreachable("Not implemented yet!");
   }
   // For the size() == 1 case, we simply return that one matcher.
   // No need to wrap it in a variadic operation.
   if (InnerMatchers.size() == 1) {
-    assert(false && "Not implemented yet!");
+    llvm_unreachable("Not implemented yet!");
     // return BindableMatcher<T>(*InnerMatchers[0]);
   }
 
@@ -313,8 +306,7 @@ PathMatcher<NodeTy> makeSequentialComposite(
           std::move(DynMatchers))));
 }
 
-///
-/// FIXME: add a useful description.
+/// A matcher that allows matching a sequence of nodes.
 template <typename NodeTy>
 class VariadicSequentialPathMatcher
     : public ast_matchers::internal::VariadicFunction<
@@ -342,17 +334,12 @@ public:
   void setStateID(MatcherStateID StateID) { this->StateID = StateID; }
 
   MatchResult matchNewNode(const NodeTy &Node, GraphMatchFinder *Finder,
-                           GraphBoundNodesTreeBuilder *Builder);
+                           GraphBoundNodesTreeBuilder *Builder) {
+    return Matcher->matches(Node, Finder, Builder, StateID);
+  }
 
   PathMatcher<NodeTy> *Matcher;
 };
-
-template <typename NodeTy>
-MatchResult
-BindEntry<NodeTy>::matchNewNode(const NodeTy &Node, GraphMatchFinder *Finder,
-                                GraphBoundNodesTreeBuilder *Builder) {
-  return Matcher->matches(Node, Finder, Builder, StateID);
-}
 
 } // end namespace internal
 

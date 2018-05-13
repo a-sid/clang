@@ -55,11 +55,12 @@ void GraphMatchFinder::advance(const ExplodedNode *Pred,
     }
   }
 
-  SmallVector<PathSensMatcher *, 4> RejectedMatchers;
-
   // Check if a new item (StateID == 0) should be added.
   for (auto &MatchItem : PathSensMatchers) {
     PathSensMatcher *Matcher = MatchItem.first;
+    if (RejectedMatchers.count(Matcher))
+      continue;
+
     auto Builder = GraphBoundNodesTreeBuilder::getTemporary(BoundMap, Succ);
     MatchResult Res = Matcher->matches(*Succ, this, &Builder, 0);
     if (Res.isAdvance()) {
@@ -71,16 +72,12 @@ void GraphMatchFinder::advance(const ExplodedNode *Pred,
       Callback->run(Builder.getBoundNodes());
 
     } else if (Res.Action == MatchAction::RejectForever) {
-      RejectedMatchers.push_back(Matcher);
+      RejectedMatchers.insert(Matcher);
     }
   }
-
-  for (auto *Rej : RejectedMatchers)
-    PathSensMatchers.erase(Rej);
 }
 
-void GraphMatchFinder::match(ExplodedGraph &G, BugReporter &BR,
-                             ExprEngine &Eng) {
+void GraphMatchFinder::match(const ExplodedGraph &G) {
   // Simple DFS on ExplodedGraph nodes.
   // FIXME: Make the visitor configurable.
   typedef const ExplodedNode *ENodeRef;
