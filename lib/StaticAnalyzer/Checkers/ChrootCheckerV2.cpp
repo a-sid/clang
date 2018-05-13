@@ -63,7 +63,7 @@ void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
                              callEnter(hasCallExpr(NotChdir))))
               .bind("bug_node")),
       &Callback);
-  Finder.match(G, BR, Eng);
+  Finder.match(G);
 }
 
 void ento::registerChrootCheckerV2(CheckerManager &Mgr) {

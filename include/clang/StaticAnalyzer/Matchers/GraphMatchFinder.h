@@ -108,10 +108,11 @@ private:
   EntriesTy Entries;
   GraphBoundNodesMap BoundMap;
   std::map<internal::PathSensMatcher *, PathMatchCallback *> PathSensMatchers;
+  llvm::SmallPtrSet<internal::PathSensMatcher *, 4> RejectedMatchers;
 
 public:
   void match(const Decl *D);
-  void match(ExplodedGraph &G, BugReporter &BR, ExprEngine &Eng);
+  void match(const ExplodedGraph &G);
   void addMatcher(const internal::PathSensMatcher &Matcher,
                   PathMatchCallback *Callback) {
     internal::PathSensMatcher *Copy = new internal::PathSensMatcher(Matcher);
