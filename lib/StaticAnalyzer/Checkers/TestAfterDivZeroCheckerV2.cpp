@@ -147,7 +147,7 @@ void TestAfterDivZeroCheckerV2::checkEndAnalysis(ExplodedGraph &G,
                   postDominatesBoundLocal("div_binop")))))
               .bind("comp_node")),
       &Callback);
-  Finder.match(G, BR, Eng);
+  Finder.match(G);
 }
 
 void ento::registerTestAfterDivZeroCheckerV2(CheckerManager &mgr) {

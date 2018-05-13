@@ -74,7 +74,6 @@ matchNotMatchers(size_t StartIndex, const DynTypedNode &Node,
       return {I, true};
     MatchFinder Finder;
     // Currently, negative matchers are not allowed to add bound nodes.
-    // FIXME: design and implement this.
     astm_internal::CollectMatchesCallback Callback;
     Finder.addDynamicMatcher(Matchers[I], &Callback);
     std::unique_ptr<EGraphContext> EGContext;
@@ -84,9 +83,6 @@ matchNotMatchers(size_t StartIndex, const DynTypedNode &Node,
     }
     Finder.match(Node, Ctx);
     if (!Callback.HasMatches)
-      // match(Matchers[I], Node.getUnchecked<T>(), Ctx);
-      //   if (!match(Matchers[I], Node, Ctx))
-      //  if (!Matchers[I].matches(Node, Finder, Builder))
       return {I, false};
   }
   return {I, true};

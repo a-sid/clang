@@ -167,13 +167,6 @@ inline const Decl *getParentFunction(ASTContext &ASTCtx, const Stmt &S) {
   using namespace ast_matchers;
   auto FuncFinder = stmt(hasAncestor(functionDecl().bind("func")));
   return selectFirst<Decl>("func", match(FuncFinder, S, ASTCtx));
-  /*  ast_type_traits::DynTypedNode Node =
-    ast_type_traits::DynTypedNode::create(S); auto Parents =
-    ASTCtx.getParents(S); while (!Parents.empty()) { const auto &Parent =
-    Parents[0]; if (const auto *FD = Parent.get < FunctionDecl) return FD; Node
-    = Parent;
-    }
-    return nullptr;*/
 }
 
 inline size_t getCFGBlockIndex(const CFGBlock &Block, const Stmt *S) {
