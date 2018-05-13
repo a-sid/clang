@@ -241,6 +241,8 @@ void DynTypedNode::print(llvm::raw_ostream &OS,
     S->printPretty(OS, nullptr, PP);
   else if (const Type *T = get<Type>())
     QualType(T, 0).print(OS, PP);
+  // FIXME: This should be enabled after cyclic dependencies are resolved.
+  /*
   else if (const ProgramState *State = get<ProgramState>())
     State->print(OS);
   else if (const SVal *SV = get<SVal>())
@@ -250,6 +252,7 @@ void DynTypedNode::print(llvm::raw_ostream &OS,
   else if (const SymExpr *SE = get<SymExpr>())
     SE->dumpToStream(OS);
   else
+  */
     // FIXME:ProgramPoint, etc.
     OS << "Unable to print values of type " << NodeKind.asStringRef() << "\n";
 }
@@ -261,6 +264,8 @@ void DynTypedNode::dump(llvm::raw_ostream &OS, SourceManager &SM) const {
     S->dump(OS, SM);
   else if (const Type *T = get<Type>())
     T->dump(OS);
+  // FIXME: This should be enabled after cyclic dependencies are resolved.
+  /*
   else if (const ProgramState *State = get<ProgramState>())
     State->print(OS);
   else if (const SVal *SV = get<SVal>())
@@ -269,6 +274,7 @@ void DynTypedNode::dump(llvm::raw_ostream &OS, SourceManager &SM) const {
     MR->printPretty(OS);
   else if (const SymExpr *SE = get<SymExpr>())
     SE->dumpToStream(OS);
+    */
   else
     OS << "Unable to dump values of type " << NodeKind.asStringRef() << "\n";
 }
