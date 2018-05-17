@@ -86,7 +86,10 @@ class TestImportBase : public ParameterizedTestsFixture {
     createVirtualFileIfNeeded(To, FromFileName,
                               From->getBufferForFile(FromFileName));
 
-    auto Imported = Importer.Import(Node);
+    auto ImportRes = Importer.Import(Node);
+    EXPECT_TRUE(ImportRes);
+
+    auto Imported = *ImportRes;
 
     // This should dump source locations and assert if some source locations
     // were not imported.
@@ -317,7 +320,7 @@ class ASTImporterTestBase : public ParameterizedTestsFixture {
       createVirtualFileIfNeeded(ToAST, FileName, Code);
     }
 
-    Decl *import(ASTUnit *ToAST, Decl *FromDecl) {
+    Optional<Decl *> import(ASTUnit *ToAST, Decl *FromDecl) {
       lazyInitImporter(ToAST);
       return Importer->Import(FromDecl);
      }
@@ -392,10 +395,10 @@ public:
 
     assert(FoundDecls.size() == 1);
 
-    Decl *Imported = FromTU.import(ToAST.get(), FoundDecls.front());
+    auto Imported = FromTU.import(ToAST.get(), FoundDecls.front());
 
     assert(Imported);
-    return std::make_tuple(*FoundDecls.begin(), Imported);
+    return std::make_tuple(*FoundDecls.begin(), *Imported);
   }
 
   // Creates a TU decl for the given source code which can be used as a From
@@ -429,10 +432,11 @@ public:
   // Import the given Decl into the ToCtx.
   // May be called several times in a given test.
   // The different instances of the param From may have different ASTContext.
-  Decl *Import(Decl *From, Language ToLang) {
+  Decl * Import(Decl *From, Language ToLang) {
     lazyInitToAST(ToLang);
     TU *FromTU = findFromTU(From);
-    return FromTU->import(ToAST.get(), From);
+    auto Imported = FromTU->import(ToAST.get(), From);
+    return Imported ? *Imported : nullptr;
   }
 
   QualType ImportType(QualType FromType, Decl *TUDecl, Language ToLang) {

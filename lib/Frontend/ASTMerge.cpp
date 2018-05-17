@@ -65,10 +65,10 @@ void ASTMergeAction::ExecuteAction() {
           if (II->isStr("__va_list_tag") || II->isStr("__builtin_va_list"))
             continue;
 
-      Decl *ToD = Importer.Import(D);
-
+      auto ToD = Importer.Import(D);
+    
       if (ToD) {
-        DeclGroupRef DGR(ToD);
+        DeclGroupRef DGR(*ToD);
         CI.getASTConsumer().HandleTopLevelDecl(DGR);
       }
     }

@@ -400,7 +400,9 @@ bool ExternalASTMerger::FindExternalVisibleDeclsByName(const DeclContext *DC,
   for (const Candidate &C : Candidates) {
     Decl *LookupRes = C.first.get();
     ASTImporter *Importer = C.second;
-    NamedDecl *ND = cast_or_null<NamedDecl>(Importer->Import(LookupRes));
+    auto ImportRes = Importer->Import(LookupRes);
+    assert(ImportRes);
+    NamedDecl *ND = cast_or_null<NamedDecl>(*ImportRes);
     assert(ND);
     // If we don't import specialization, they are not available via lookup
     // because the lookup result is imported TemplateDecl and it does not
@@ -422,8 +424,9 @@ void ExternalASTMerger::FindExternalLexicalDecls(
                             Source<const DeclContext *> SourceDC) -> bool {
     for (const Decl *SourceDecl : SourceDC.get()->decls()) {
       if (IsKindWeWant(SourceDecl->getKind())) {
-        Decl *ImportedDecl = Forward.Import(const_cast<Decl *>(SourceDecl));
-        assert(!ImportedDecl || IsSameDC(ImportedDecl->getDeclContext(), DC));
+        auto ImportedDecl = Forward.Import(SourceDecl);
+        assert(!ImportedDecl ||
+               IsSameDC((*ImportedDecl)->getDeclContext(), DC));
         (void)ImportedDecl;
       }
     }

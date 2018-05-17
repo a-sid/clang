@@ -147,9 +147,21 @@ class Attr;
     ///
     /// \returns the equivalent declaration in the "to" context, or a NULL type
     /// if an error occurred.
-    Decl *Import(Decl *FromD);
-    Decl *Import(const Decl *FromD) {
+    Optional<Decl *> Import(Decl *FromD);
+    Optional<Decl *> Import(const Decl *FromD) {
       return Import(const_cast<Decl *>(FromD));
+    }
+
+    template <typename T> Optional<T *> importNonNull(T *From) {
+      if (auto Imported = Import(From))
+        return cast<T>(*Imported);
+      return None;
+    }
+
+    template <typename T> Optional<T *> importNullable(T *From) {
+      if (auto Imported = Import(From))
+        return cast_or_null<T>(*Imported);
+      return None;
     }
 
     /// Return the copy of the given declaration in the "to" context if
