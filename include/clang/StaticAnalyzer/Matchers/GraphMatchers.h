@@ -49,6 +49,19 @@ const internal::VariadicOperatorPathMatcherFunc<
     internal::SequenceVariadicOperator, 1, std::numeric_limits<unsigned>::max()>
     hasSequence;
 
+inline internal::PathSensMatcher
+achievesCountOnPath(ast_matchers::internal::DynTypedMatcher StartMatcher,
+                    ast_matchers::internal::DynTypedMatcher IncrementMatcher,
+                    ast_matchers::internal::DynTypedMatcher DecrementMatcher,
+                    ssize_t InitialCounter, ssize_t MatchCounter,
+                    ssize_t LowerBound = std::numeric_limits<ssize_t>::min(),
+                    ssize_t UpperBound = std::numeric_limits<ssize_t>::max()) {
+  return internal::PathSensMatcher(internal::DynTypedPathMatcher(
+      new internal::CountingPathMatcher(StartMatcher, IncrementMatcher,
+                                        DecrementMatcher, InitialCounter,
+                                        MatchCounter, LowerBound, UpperBound)));
+}
+
 using ExplodedNodeMatcher = ast_matchers::internal::Matcher<ExplodedNode>;
 
 extern const ast_matchers::internal::VariadicAllOfMatcher<ExplodedNode>
@@ -57,6 +70,8 @@ extern const ast_matchers::internal::VariadicAllOfMatcher<ExplodedNode>
 extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<SVal,
                                                                  DefinedSVal>
     definedSVal;
+
+extern const ast_matchers::internal::VariadicAllOfMatcher<MemRegion> memRegion;
 
 extern const ast_matchers::internal::VariadicDynCastAllOfMatcher<MemRegion,
                                                                  StringRegion>

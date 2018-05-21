@@ -58,30 +58,40 @@ astm_internal::BoundNodesMap GraphBoundNodesTreeBuilder::getBoundNodes() {
 
 namespace {
 
-bool isLastNode(const DynTypedNode &Node) {
+static bool isLastNode(const DynTypedNode &Node) {
   if (const ExplodedNode *N = Node.get<ExplodedNode>())
     return N->succ_empty();
   return true;
 }
 
-static std::pair<size_t, bool>
+static astm_internal::CollectMatchesCallback
+getASTMatches(const DynTypedNode &DynNode,
+              const astm_internal::DynTypedMatcher &Matcher, ASTContext &ACtx,
+              GraphBoundNodesTreeBuilder *Builder) {
+  MatchFinder NodeFinder;
+  static int t = 0; ++t;
+  astm_internal::CollectMatchesCallback CB;
+  NodeFinder.addDynamicMatcher(Matcher, &CB);
+  std::unique_ptr<EGraphContext> EGContext;
+  if (const ExplodedNode *ENode = DynNode.get<ExplodedNode>()) {
+    EGContext.reset(new EGraphContext(*Builder, ENode));
+    NodeFinder.addContext(EGContext.get());
+  }
+  NodeFinder.match(DynNode, ACtx);
+  return CB;
+}
+
+std::pair<size_t, bool>
 matchNotMatchers(size_t StartIndex, const DynTypedNode &Node,
-                 GraphBoundNodesTreeBuilder *Builder, ASTContext &Ctx,
+                 GraphBoundNodesTreeBuilder *Builder, ASTContext &ACtx,
                  ArrayRef<astm_internal::DynTypedMatcher> Matchers) {
   size_t I = StartIndex;
   for (; I < Matchers.size(); ++I) {
     if (!Matchers[I].isNegative())
       return {I, true};
-    MatchFinder Finder;
+
     // Currently, negative matchers are not allowed to add bound nodes.
-    astm_internal::CollectMatchesCallback Callback;
-    Finder.addDynamicMatcher(Matchers[I], &Callback);
-    std::unique_ptr<EGraphContext> EGContext;
-    if (const ExplodedNode *ENode = Node.get<ExplodedNode>()) {
-      EGContext.reset(new EGraphContext(*Builder, ENode));
-      Finder.addContext(EGContext.get());
-    }
-    Finder.match(Node, Ctx);
+    auto Callback = getASTMatches(Node, Matchers[I], ACtx, Builder);
     if (!Callback.HasMatches)
       return {I, false};
   }
@@ -135,7 +145,7 @@ SequenceVariadicOperator(const DynTypedNode &DynNode, GraphMatchFinder *Finder,
     if (IsNodeLast)
       // If the node is last and no matchers remain, the path match
       // is accepted.
-      return {MatchAction::Accept, Index};
+      return {MatchAction::Accept, static_cast<MatcherStateID>(Index)};
     else
       // If the node is not last but all final negative matchers match,
       // continue matching until the final node is met.
@@ -145,38 +155,75 @@ SequenceVariadicOperator(const DynTypedNode &DynNode, GraphMatchFinder *Finder,
   // Next matcher should exist and it should be positive.
   assert(InnerMatchers[Index].isPositive());
   bool IsLastMatcher = Index == InnerMatchers.size() - 1;
+  bool IsNewMatch = StateID == 0;
+
   if (IsNodeLast && !IsLastMatcher)
     return {MatchAction::RejectSingle, StateInvalid};
 
-  MatchFinder NodeFinder;
-  astm_internal::CollectMatchesCallback CB;
-  NodeFinder.addDynamicMatcher(InnerMatchers[Index], &CB);
-  std::unique_ptr<EGraphContext> EGContext;
-  if (const ExplodedNode *ENode = DynNode.get<ExplodedNode>()) {
-    EGContext.reset(new EGraphContext(*Builder, ENode));
-    NodeFinder.addContext(EGContext.get());
-  }
-  NodeFinder.match(DynNode, Finder->getASTContext());
-  bool PositiveMatch =
-      // InnerMatchers[Index].matches(DynNode, Finder->BasicFinder, Builder);
-      CB.HasMatches;
-
+  auto Callback = getASTMatches(DynNode, InnerMatchers[Index],
+                                Finder->getASTContext(), Builder);
+  bool PositiveMatch = Callback.HasMatches;
   if (PositiveMatch) {
-    Builder->addMatches(CB.Nodes);
+    Builder->addMatches(Callback.Nodes);
     if (IsLastMatcher)
-      return {MatchAction::Accept, Index};
+      return {MatchAction::Accept, static_cast<MatcherStateID>(Index)};
+    else if (IsNewMatch)
+      return {MatchAction::StartNew, static_cast<MatcherStateID>(Index + 1)};
     else
-      return {MatchAction::Advance, Index + 1};
+      return {MatchAction::Advance, static_cast<MatcherStateID>(Index + 1)};
   } else {
     return {MatchAction::Pass, StateID};
   }
   llvm_unreachable("The result should be already defined and returned!");
 }
 
+MatchResult CountingPathMatcher::dynMatches(const DynTypedNode &DynNode,
+                                            GraphMatchFinder *Finder,
+                                            GraphBoundNodesTreeBuilder *Builder,
+                                            MatcherStateID StateID) const {
+  ASTContext &ACtx = Finder->getASTContext();
+  auto IncCallback = getASTMatches(DynNode, IncrementMatcher, ACtx, Builder);
+  if (IncCallback.HasMatches) {
+    Builder->addMatches(IncCallback.Nodes);
+    MatcherStateID NewState = StateID;
+    if (NewState < UpperLimit) {
+      ++NewState;
+      if (NewState == MatchCounter)
+        return {MatchAction::Accept, NewState};
+      return {MatchAction::Advance, NewState};
+    }
+    return {MatchAction::Pass, StateID};
+  }
+
+  auto DecCallback = getASTMatches(DynNode, DecrementMatcher, ACtx, Builder);
+  if (DecCallback.HasMatches) {
+    Builder->addMatches(DecCallback.Nodes);
+    MatcherStateID NewState = StateID;
+    if (NewState > LowerLimit) {
+      --NewState;
+      if (NewState == MatchCounter)
+        return {MatchAction::Accept, NewState};
+      return {MatchAction::Advance, NewState};
+    }
+    return {MatchAction::Pass, StateID};
+  }
+
+  // FIXME: Determine what to do if action matchers and start matchers match
+  // same node.
+  auto AddCallback = getASTMatches(DynNode, StartMatcher, ACtx, Builder);
+  if (AddCallback.HasMatches) {
+    Builder->addMatches(AddCallback.Nodes);
+    return {MatchAction::StartNew, InitialCounter};
+  }
+
+  return {MatchAction::Pass, StateID};
+}
+
 } // end namespace internal
 
 const astm_internal::VariadicAllOfMatcher<ExplodedNode> explodedNode;
 const astm_internal::VariadicDynCastAllOfMatcher<SVal, DefinedSVal> definedSVal;
+const astm_internal::VariadicAllOfMatcher<MemRegion> memRegion;
 const astm_internal::VariadicDynCastAllOfMatcher<MemRegion, StringRegion>
     stringRegion;
 const astm_internal::VariadicAllOfMatcher<LocationContext> locationContext;

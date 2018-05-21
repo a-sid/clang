@@ -45,6 +45,7 @@ void GraphMatchFinder::advance(const ExplodedNode *Pred,
       Entries.erase(Entries.begin() + I);
       break;
     case MatchAction::Pass:
+    case MatchAction::StartNew:
       ++I;
       // Do nothing.
       break;
@@ -63,7 +64,7 @@ void GraphMatchFinder::advance(const ExplodedNode *Pred,
 
     auto Builder = GraphBoundNodesTreeBuilder::getTemporary(BoundMap, Succ);
     MatchResult Res = Matcher->matches(*Succ, this, &Builder, 0);
-    if (Res.isAdvance()) {
+    if (Res.isStartNew()) {
       const auto &NewEntry = Entries.addMatch(Matcher, Res.NewStateID);
       Builder.acceptTemporary(NewEntry.getMatchID());
 

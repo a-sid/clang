@@ -26,6 +26,7 @@ class MatchFinderContext {
 public:
   virtual ento::ast_graph_type_traits::DynTypedNode
   getBoundNode(StringRef ID) = 0;
+  virtual ~MatchFinderContext() = default;
 };
 
 } // end namespace internal
