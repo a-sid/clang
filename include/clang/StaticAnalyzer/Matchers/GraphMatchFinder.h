@@ -88,6 +88,7 @@ public:
   class PathMatchCallback {
   public:
     virtual void run(const GraphBoundNodesMap::StoredItemTy &BoundNodes) = 0;
+    virtual ~PathMatchCallback() = default;
   };
 
 private:

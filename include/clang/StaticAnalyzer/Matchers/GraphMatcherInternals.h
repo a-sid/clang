@@ -68,10 +68,17 @@ private:
   static constexpr MatcherID TemporaryID = -1;
 };
 
-using MatcherStateID = size_t;
+using MatcherStateID = ssize_t;
 const MatcherStateID StateInvalid = std::numeric_limits<MatcherStateID>::max();
 
-enum class MatchAction { Accept, Advance, RejectSingle, RejectForever, Pass };
+enum class MatchAction {
+  StartNew,
+  Accept,
+  Advance,
+  RejectSingle,
+  RejectForever,
+  Pass
+};
 
 struct MatchResult {
   MatchAction Action;
@@ -82,6 +89,7 @@ struct MatchResult {
            Action == MatchAction::RejectSingle;
   }
 
+  bool isStartNew() const { return Action == MatchAction::StartNew; }
   bool isAccept() const { return Action == MatchAction::Accept; }
   bool isAdvance() const { return Action == MatchAction::Advance; }
   bool isMatchSuccess() const { return isAccept() || isAdvance(); }
@@ -169,11 +177,12 @@ private:
 /// \brief Wrapper of a PathMatcherInterface<T> *that allows copying.
 /// For now, dynamic conversions between pathMatches for different node kinds
 /// are not supported.
+// FIXME: This class is almost a proxy. Remove it?
 template <typename T> class PathMatcher {
 public:
   /// \brief Takes ownership of the provided implementation pointer.
   explicit PathMatcher(PathMatcherInterface<T> *Implementation)
-      : Implementation(Implementation) {}
+      : Implementation(DynTypedPathMatcher(Implementation)) {}
 
   explicit PathMatcher(const DynTypedPathMatcher &Implementation)
       : Implementation(Implementation) {}
@@ -225,6 +234,32 @@ public:
 
 private:
   std::vector<ast_matchers::internal::DynTypedMatcher> InnerMatchers;
+};
+
+class CountingPathMatcher : public DynPathMatcherInterface {
+public:
+  CountingPathMatcher(
+      ast_matchers::internal::DynTypedMatcher StartMatcher,
+      ast_matchers::internal::DynTypedMatcher IncrementMatcher,
+      ast_matchers::internal::DynTypedMatcher DecrementMatcher,
+      MatcherStateID InitialCounter, MatcherStateID MatchCounter,
+      MatcherStateID LowerBound = std::numeric_limits<MatcherStateID>::min(),
+      MatcherStateID UpperBound = std::numeric_limits<MatcherStateID>::max())
+      : StartMatcher(StartMatcher), IncrementMatcher(IncrementMatcher),
+        DecrementMatcher(DecrementMatcher), InitialCounter(InitialCounter),
+        MatchCounter(MatchCounter), LowerLimit(LowerBound),
+        UpperLimit(UpperBound) {}
+
+  MatchResult dynMatches(const ast_graph_type_traits::DynTypedNode &DynNode,
+                         GraphMatchFinder *Finder,
+                         GraphBoundNodesTreeBuilder *Builder,
+                         MatcherStateID StateID) const override;
+
+private:
+  ast_matchers::internal::DynTypedMatcher StartMatcher, IncrementMatcher,
+      DecrementMatcher;
+  MatcherStateID InitialCounter, MatchCounter;
+  MatcherStateID LowerLimit, UpperLimit;
 };
 
 /// \brief Polymorphic matcher object that uses a \c

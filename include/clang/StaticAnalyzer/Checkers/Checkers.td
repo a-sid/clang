@@ -80,6 +80,7 @@ def Containers : Package<"containers">, InPackage<CoreFoundation>;
 def LocalizabilityAlpha : Package<"localizability">, InPackage<CocoaAlpha>;
 def LocalizabilityOptIn : Package<"localizability">, InPackage<CocoaOptIn>;
 
+def TestingAlpha : Package<"test">, InPackage<Alpha>;
 def MPI : Package<"mpi">, InPackage<OptIn>;
 
 def LLVM : Package<"llvm">;
@@ -809,6 +810,17 @@ def ExplodedGraphViewer : Checker<"ViewExplodedGraph">,
 
 } // end "debug"
 
+//===----------------------------------------------------------------------===//
+// Testing checkers
+//===----------------------------------------------------------------------===//
+
+let ParentPackage = TestingAlpha in {
+
+def MatcherRetainChecker : Checker<"MatcherRetain">,
+  HelpText<"Matcher-based retain/release counting.">,
+  DescFile<"MatcherRetainChecker.cpp">;
+
+} // end "clone"
 
 //===----------------------------------------------------------------------===//
 // Clone Detection

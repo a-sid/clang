@@ -798,8 +798,6 @@ private:
   // Maps (matcher, node) -> the match result for memoization.
   typedef std::map<MatchKey, MemoizedMatchResult> MemoizationMap;
   MemoizationMap ResultCache;
-
-  ASTMatchFinder::ContextMapTy *ContextMap;
 };
 
 static CXXRecordDecl *
