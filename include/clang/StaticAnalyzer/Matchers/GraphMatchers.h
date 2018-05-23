@@ -24,7 +24,7 @@
 #include "clang/Analysis/CFGStmtMap.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 #include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
-#include "clang/StaticAnalyzer/Matchers/GraphMatcherInternals.h"
+#include "clang/StaticAnalyzer/Matchers/GraphMatchFinder.h"
 
 #include "llvm/ADT/StringMap.h"
 
@@ -33,16 +33,6 @@ namespace clang {
 namespace ento {
 
 namespace path_matchers {
-
-class PSMatchesCallback : public ast_matchers::MatchFinder::MatchCallback {
-public:
-  void run(const ast_matchers::MatchFinder::MatchResult &Result) override {
-    Nodes.push_back(Result.Nodes);
-    HasMatches = true;
-  }
-  SmallVector<ast_matchers::BoundNodes, 1> Nodes;
-  bool HasMatches = false;
-};
 
 // template <typename NodeTy>
 const internal::VariadicOperatorPathMatcherFunc<

@@ -113,6 +113,10 @@ public:
                                       ExplodedNodeSet &Dst,
                                       const BlockEdge &L) = 0;
 
+  /// Called by CoreEngine.  Used to notify checker and CheckerManager that
+  /// a new path-sensitive analysis has begun.
+  virtual void processBeginAnalysis() = 0;
+
   /// Called by CoreEngine.  Used to notify checkers that processing a
   /// function has ended. Called for both inlined and and top-level functions.
   virtual void processEndOfFunction(NodeBuilderContext& BC,

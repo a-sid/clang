@@ -20,6 +20,7 @@
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Matchers/GraphMatchFinder.h"
+#include "clang/StaticAnalyzer/Matchers/GraphMatchers.h"
 
 using namespace clang;
 using namespace ento;
@@ -40,7 +41,8 @@ void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
                                        ExprEngine &Eng) const {
   path_matchers::GraphMatchFinder Finder(BR.getContext());
   auto Callback = createProxyCallback(
-      [&BR, this](const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
+      [&BR, this](ExprEngine &Eng,
+                  const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
         const ExplodedNode *N = BoundNodes.getNodeAs<ExplodedNode>("bug_node");
         if (!BT_BreakJail)
           BT_BreakJail.reset(new BuiltinBug(
@@ -63,7 +65,7 @@ void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
                              callEnter(hasCallExpr(NotChdir))))
               .bind("bug_node")),
       &Callback);
-  Finder.match(G);
+  Finder.match(G, Eng);
 }
 
 void ento::registerChrootCheckerV2(CheckerManager &Mgr) {

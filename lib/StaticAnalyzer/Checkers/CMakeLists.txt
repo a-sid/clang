@@ -89,6 +89,7 @@ add_clang_library(clangStaticAnalyzerCheckers
   TaintTesterChecker.cpp
   TestAfterDivZeroChecker.cpp
   TestAfterDivZeroCheckerV2.cpp
+  TestAfterDivZeroCheckerV3.cpp
   TraversalChecker.cpp
   TrustNonnullChecker.cpp
   UndefBranchChecker.cpp
@@ -112,5 +113,5 @@ add_clang_library(clangStaticAnalyzerCheckers
   clangBasic
   clangLex
   clangStaticAnalyzerCore
-  clangStaticAnalyzerMatchers
+  # clangStaticAnalyzerMatchers
   )

@@ -723,6 +723,17 @@ void AnalysisConsumer::HandleCode(Decl *D, AnalysisMode Mode,
 // Path-sensitive checking.
 //===----------------------------------------------------------------------===//
 
+class PathMatcherListener : public ExplodedNode::Auditor {
+  CheckerManager &Mgr;
+
+public:
+  PathMatcherListener(CheckerManager &Mgr) : Mgr(Mgr) {}
+
+  void AddEdge(ExplodedNode *Src, ExplodedNode *Dst) override {
+    Mgr.notifyAboutNewEdge(Src, Dst);
+  }
+};
+
 void AnalysisConsumer::RunPathSensitiveChecks(Decl *D,
                                               ExprEngine::InliningModes IMode,
                                               SetOfConstDecls *VisitedCallees) {
@@ -737,12 +748,27 @@ void AnalysisConsumer::RunPathSensitiveChecks(Decl *D,
 
   ExprEngine Eng(CTU, *Mgr, VisitedCallees, &FunctionSummaries, IMode);
 
+  PathMatcherListener MatcherListener(*checkerMgr);
+  ExplodedNode::addAuditor(&MatcherListener);
+#ifndef NDEBUG
+  // Set the graph auditor.
+  std::unique_ptr<ExplodedNode::Auditor> Auditor;
+  if (Mgr->options.visualizeExplodedGraphWithUbiGraph) {
+    Auditor = CreateUbiViz();
+    ExplodedNode::addAuditor(Auditor.get());
+  }
+#endif
+
   // Execute the worklist algorithm.
   Eng.ExecuteWorkList(Mgr->getAnalysisDeclContextManager().getStackFrame(D),
                       Mgr->options.MaxNodesPerTopLevelFunction);
 
   if (!Mgr->options.DumpExplodedGraphTo.empty())
     Eng.DumpGraph(Mgr->options.TrimGraph, Mgr->options.DumpExplodedGraphTo);
+
+  // Release the auditor (if any) so that it doesn't monitor the graph
+  // created BugReporter.
+  ExplodedNode::resetAuditors();
 
   // Visualize the exploded graph.
   if (Mgr->options.visualizeExplodedGraphWithGraphViz)

@@ -205,6 +205,10 @@ public:
     return NodeMap < Other.NodeMap;
   }
 
+  bool operator==(const BoundNodesMap &Other) const {
+    return NodeMap == Other.NodeMap;
+  }
+
   /// A map from IDs to the bound nodes.
   ///
   /// Note that we're using std::map here, as for memoization:

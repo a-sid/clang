@@ -1,4 +1,4 @@
-//== TestAfterDivZeroCheckerV2.cpp - Test after division by zero checker -*-==//
+//== TestAfterDivZeroCheckerV3.cpp - Test after division by zero checker -*-==//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines TestAfterDivZeroCheckerV2, a matcher-based builtin check that
+// This defines TestAfterDivZeroCheckerV3, a matcher-based builtin check that
 // performs checks for division by zero where the division occurs before
 // comparison with zero.
 //
@@ -18,6 +18,7 @@
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 #include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
 #include "clang/StaticAnalyzer/Matchers/GraphMatchFinder.h"
 #include "clang/StaticAnalyzer/Matchers/GraphMatchers.h"
@@ -61,12 +62,13 @@ public:
   }
 };
 
-class TestAfterDivZeroCheckerV2 : public Checker<check::EndAnalysis> {
+class TestAfterDivZeroCheckerV3
+    : public Checker<check::ASTDecl<TranslationUnitDecl>> {
   mutable std::unique_ptr<BuiltinBug> DivZeroBug;
 
 public:
-  void checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
-                        ExprEngine &Eng) const;
+  void checkASTDecl(const TranslationUnitDecl *TU, AnalysisManager &Mgr,
+                    BugReporter &BR) const;
 };
 
 AST_MATCHER(DefinedSVal, canBeZero) {
@@ -94,13 +96,12 @@ inline Matcher<BinaryOperator> hasBothOperands(const Matcher<Expr> &Matcher1,
 }
 } // namespace
 
-void TestAfterDivZeroCheckerV2::checkEndAnalysis(ExplodedGraph &G,
-                                                 BugReporter &BR,
-                                                 ExprEngine &Eng) const {
-  path_matchers::GraphMatchFinder Finder(BR.getContext());
-  auto Callback = createProxyCallback(
-        [&BR, this](ExprEngine &Eng,
-                   const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
+void TestAfterDivZeroCheckerV3::checkASTDecl(const TranslationUnitDecl *TU,
+                                             AnalysisManager &Mgr,
+                                             BugReporter &BR) const {
+  auto *Callback = allocProxyCallback(
+        [this](ExprEngine &Eng,
+               const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
     if (!DivZeroBug)
       DivZeroBug.reset(new BuiltinBug(this, "Division by zero"));
 
@@ -109,49 +110,49 @@ void TestAfterDivZeroCheckerV2::checkEndAnalysis(ExplodedGraph &G,
                        *DivNode =
                            BoundNodes.getNodeAs<ExplodedNode>("div_node");
     assert(CompNode && DivNode);
+
     auto R = llvm::make_unique<BugReport>(
         *DivZeroBug,
         "Value being compared against zero has already been used for division",
         CompNode);
-
-    R->addVisitor(llvm::make_unique<DivisionBRVisitorV2>(DivNode));
-    BR.emitReport(std::move(R));
+    Eng.getBugReporter().emitReport(std::move(R));
   });
 
-  Finder.addMatcher(
-      hasSequence(
-          explodedNode(
-              postStmt(hasStatement(
-                  binaryOperator(
-                      isDivisionOp(),
-                      hasRHS(hasValue(definedSVal(canBeZero()).bind("value"))))
-                      .bind("div_binop"))),
-              hasStackFrame(stackFrameContext().bind("loc_ctx")))
-              .bind("div_node"),
-          unless(callExitEnd(hasCalleeContext(equalsBoundNode("loc_ctx")))),
-          explodedNode(
-              postCondition(hasStatement(allOf(
-                  anyOf(
-                      binaryOperator(
-                          isComparisonOp(),
-                          hasBothOperands(
-                              ignoringParenImpCasts(integerLiteral(equals(0))),
-                              expr(hasValue(equalsBoundNode("value"))))),
-                      unaryOperator(
-                          hasOperatorName("!"),
-                          hasUnaryOperand(
-                              anyOf(hasValue(equalsBoundNode("value")),
-                                    implicitCastExpr(hasSourceExpression(
-                                        hasValue(equalsBoundNode("value"))))))),
-                      implicitCastExpr(anyOf(hasValue(equalsBoundNode("value")),
-                                             hasSourceExpression(hasValue(
-                                                 equalsBoundNode("value")))))),
-                  postDominatesBoundLocal("div_binop")))))
-              .bind("comp_node")),
-      &Callback);
-  Finder.match(G, Eng);
+  Mgr.getCheckerManager()->registerPathMatcher(
+      {hasSequence(
+           explodedNode(
+               postStmt(hasStatement(
+                   binaryOperator(
+                       isDivisionOp(),
+                       hasRHS(hasValue(definedSVal(canBeZero()).bind("value"))))
+                       .bind("div_binop"))),
+               hasStackFrame(stackFrameContext().bind("loc_ctx")))
+               .bind("div_node"),
+           unless(callExitEnd(hasCalleeContext(equalsBoundNode("loc_ctx")))),
+           explodedNode(
+               postCondition(hasStatement(allOf(
+                   anyOf(
+                       binaryOperator(
+                           isComparisonOp(),
+                           hasBothOperands(
+                               ignoringParenImpCasts(integerLiteral(equals(0))),
+                               expr(hasValue(equalsBoundNode("value"))))),
+                       unaryOperator(
+                           hasOperatorName("!"),
+                           hasUnaryOperand(anyOf(
+                               hasValue(equalsBoundNode("value")),
+                               implicitCastExpr(hasSourceExpression(
+                                   hasValue(equalsBoundNode("value"))))))),
+                       implicitCastExpr(
+                           anyOf(hasValue(equalsBoundNode("value")),
+                                 hasSourceExpression(
+                                     hasValue(equalsBoundNode("value")))))),
+                   postDominatesBoundLocal("div_binop")))))
+               .bind("comp_node")),
+       Callback},
+      BR.getContext());
 }
 
-void ento::registerTestAfterDivZeroCheckerV2(CheckerManager &mgr) {
-  mgr.registerChecker<TestAfterDivZeroCheckerV2>();
+void ento::registerTestAfterDivZeroCheckerV3(CheckerManager &mgr) {
+  mgr.registerChecker<TestAfterDivZeroCheckerV3>();
 }

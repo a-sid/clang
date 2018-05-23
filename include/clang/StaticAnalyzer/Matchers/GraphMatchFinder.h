@@ -22,11 +22,27 @@
 #define LLVM_CLANG_ENTO_MATCHERS_GRAPHMATCHFINDER_H
 
 #include "clang/ASTMatchers/ASTGraphTypeTraits.h"
-#include "clang/StaticAnalyzer/Matchers/GraphMatchers.h"
-
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
-
+#include "clang/StaticAnalyzer/Matchers/GraphMatcherInternals.h"
 #include "llvm/ADT/StringMap.h"
+
+namespace llvm {
+
+template <>
+struct FoldingSetTrait<clang::ast_matchers::internal::BoundNodesMap>
+    : DefaultFoldingSetTrait<clang::ast_matchers::internal::BoundNodesMap> {
+  using StoredItemTy = clang::ast_matchers::internal::BoundNodesMap;
+
+  static void Profile(const StoredItemTy &X, FoldingSetNodeID &ID) {
+    for (const auto &Entry : X.getMap()) {
+        ID.AddString(Entry.first);
+        ID.AddInteger(clang::ento::ast_graph_type_traits::DynTypedNode::
+                          DenseMapInfo::getHashValue(Entry.second));
+      }
+  }
+};
+
+} // namespace llvm
 
 namespace clang {
 
@@ -37,22 +53,32 @@ class ExprEngine;
 
 namespace path_matchers {
 
+
 // template <typename NodeTy>
 class GraphBoundNodesMap {
 public:
   using NodeTy = const ExplodedNode *;
   using StoredItemTy = ast_matchers::internal::BoundNodesMap;
-  using GDMTy = std::map<internal::MatcherID, StoredItemTy>;
+  using GDMTy = llvm::ImmutableMap<internal::MatcherID, StoredItemTy>;
+  using GDMFactory = GDMTy::Factory;
   using GraphGDMTy = std::map<const ExplodedNode *, GDMTy>;
 
-  GraphBoundNodesMap() : GraphGDM{{nullptr, GDMTy()}} {}
+  GraphGDMTy::iterator insertOrUpdate(NodeTy Node, GDMTy NewGDM) {
+    auto Found = GraphGDM.insert({Node, NewGDM});
+    if (!Found.second) {
+      Found.first->second = NewGDM;
+    }
+    return Found.first;
+  }
+
+  GraphBoundNodesMap()
+      : Factory(), GraphGDM{{nullptr, Factory.getEmptyMap()}} {}
 
   void advance(NodeTy Pred, NodeTy Succ) {
     assert(GraphGDM.find(Pred) != GraphGDM.end() &&
            "Cannot advance from non-existing node");
-    assert(GraphGDM.find(Succ) == GraphGDM.end() &&
-           "Successor already was processed!");
-    GraphGDM[Succ] = GraphGDM[Pred];
+    auto GDM = getGDM(Pred);
+    insertOrUpdate(Succ, GDM);
   }
 
   GDMTy &getGDM(NodeTy Node) {
@@ -61,25 +87,42 @@ public:
     return Found->second;
   }
 
-  StoredItemTy &getOrCreateMatches(NodeTy Node, internal::MatcherID MatchID) {
-    return getGDM(Node)[MatchID];
+  const StoredItemTy &getOrCreateMatches(NodeTy Node,
+                                         internal::MatcherID MatchID) {
+    auto GDM = getGDM(Node);
+    if (auto *Value = GDM.lookup(MatchID))
+      return *Value;
+
+    GDM = Factory.add(GDM, MatchID, StoredItemTy());
+    insertOrUpdate(Node, GDM);
+    return *GDM.lookup(MatchID);
   }
 
-  std::pair<GDMTy::const_iterator, bool>
-  getMatches(NodeTy Node, internal::MatcherID MatchID) {
+  const StoredItemTy *getMatches(NodeTy Node, internal::MatcherID MatchID) {
     auto &GDM = getGDM(Node);
-    auto Found = GDM.find(MatchID);
-    return {Found, Found != GDM.end()};
+    return GDM.lookup(MatchID);
   }
 
   void addMatches(NodeTy Node, internal::MatcherID MatchID,
                   const ast_matchers::BoundNodes &Nodes) {
-    auto &Entry = getOrCreateMatches(Node, MatchID);
+    auto Entry = getOrCreateMatches(Node, MatchID);
+    assert(!Nodes.getMap().empty());
     for (const auto &Item : Nodes.getMap())
       Entry.addNode(Item.first, Item.second);
+    auto NewMap = Factory.add(getGDM(Node), MatchID, Entry);
+    insertOrUpdate(Node, NewMap);
   }
 
+  void resetMatches(NodeTy Node, internal::MatcherID MatchID) {
+    auto GDM = getGDM(Node);
+    GDM = Factory.remove(GDM, MatchID);
+    insertOrUpdate(Node, GDM);
+  }
+
+  void reset() { GraphGDM = {{nullptr, Factory.getEmptyMap()}}; }
+
 private:
+  GDMFactory Factory;
   GraphGDMTy GraphGDM;
 };
 
@@ -87,7 +130,8 @@ class GraphMatchFinder {
 public:
   class PathMatchCallback {
   public:
-    virtual void run(const GraphBoundNodesMap::StoredItemTy &BoundNodes) = 0;
+    virtual void run(ExprEngine &Eng,
+                     const GraphBoundNodesMap::StoredItemTy &BoundNodes) = 0;
     virtual ~PathMatchCallback() = default;
   };
 
@@ -110,10 +154,11 @@ private:
   GraphBoundNodesMap BoundMap;
   std::map<internal::PathSensMatcher *, PathMatchCallback *> PathSensMatchers;
   llvm::SmallPtrSet<internal::PathSensMatcher *, 4> RejectedMatchers;
+  ExprEngine *CurrentEngine = nullptr;
 
 public:
   void match(const Decl *D);
-  void match(const ExplodedGraph &G);
+  void match(ExplodedGraph &G, ExprEngine &Eng);
   void addMatcher(const internal::PathSensMatcher &Matcher,
                   PathMatchCallback *Callback) {
     internal::PathSensMatcher *Copy = new internal::PathSensMatcher(Matcher);
@@ -123,6 +168,11 @@ public:
   void advance(const ExplodedNode *Pred, const ExplodedNode *Succ);
   ASTContext &getASTContext() { return ASTCtx; }
   GraphMatchFinder(ASTContext &ASTCtx) : ASTCtx(ASTCtx) {}
+
+  void reset(ExprEngine *CurrentEngine = nullptr) {
+    BoundMap.reset();
+    this->CurrentEngine = CurrentEngine;
+  }
 };
 
 template <typename CalleeTy>
@@ -133,8 +183,9 @@ public:
   ProxyMatchCallback(CalleeTy Callee) : Callee(Callee) {}
 
   virtual void
-  run(const GraphBoundNodesMap::StoredItemTy &BoundNodes) override {
-    Callee(BoundNodes);
+  run(ExprEngine &Eng,
+      const GraphBoundNodesMap::StoredItemTy &BoundNodes) override {
+    Callee(Eng, BoundNodes);
   }
 };
 
@@ -142,6 +193,16 @@ template <typename CalleeTy>
 ProxyMatchCallback<CalleeTy> createProxyCallback(CalleeTy Callee) {
   return ProxyMatchCallback<CalleeTy>(Callee);
 }
+
+template <typename CalleeTy>
+ProxyMatchCallback<CalleeTy> *allocProxyCallback(CalleeTy Callee) {
+  return new ProxyMatchCallback<CalleeTy>(Callee);
+}
+
+struct MatcherCallbackPair {
+  path_matchers::internal::PathSensMatcher Matcher;
+  GraphMatchFinder::PathMatchCallback *Callback;
+};
 
 } // end namespace path_matchers
 

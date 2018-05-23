@@ -56,6 +56,11 @@ add_clang_library(clangStaticAnalyzerCore
   WorkList.cpp
   Z3ConstraintManager.cpp
 
+  ../Matchers/EGraphContext.cpp
+  ../Matchers/GraphMatcherInternals.cpp
+  ../Matchers/GraphMatchFinder.cpp
+
+
   LINK_LIBS
   clangAST
   clangASTMatchers

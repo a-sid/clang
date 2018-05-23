@@ -2193,6 +2193,11 @@ void ExprEngine::processIndirectGoto(IndirectGotoNodeBuilder &builder) {
     builder.generateNode(I, state);
 }
 
+
+void ExprEngine::processBeginAnalysis() {
+  getCheckerManager().runCheckersForBeginAnalysis(G, BR, *this);
+}
+
 void ExprEngine::processBeginOfFunction(NodeBuilderContext &BC,
                                         ExplodedNode *Pred,
                                         ExplodedNodeSet &Dst,
