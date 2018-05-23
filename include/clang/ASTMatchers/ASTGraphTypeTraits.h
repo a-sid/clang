@@ -473,6 +473,13 @@ public:
                                   NNSL.getOpaqueData());
       }
 
+    if (ASTGraphNodeKind::getFromNodeKind<SVal>().isBaseOf(Val.NodeKind)) {
+        SVal SV = Val.getUnchecked<SVal>();
+        llvm::FoldingSetNodeID ID;
+        SV.Profile(ID);
+        return ID.ComputeHash();
+      }
+
       assert(Val.getMemoizationData());
       return llvm::hash_value(Val.getMemoizationData());
     }

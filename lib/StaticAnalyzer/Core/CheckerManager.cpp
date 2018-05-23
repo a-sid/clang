@@ -22,6 +22,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/CoreEngine.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.h"
+#include "clang/StaticAnalyzer/Matchers/GraphMatchFinder.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -39,6 +40,7 @@ bool CheckerManager::hasPathSensitiveCheckers() const {
          !PostCallCheckers.empty()   ||
          !LocationCheckers.empty()          ||
          !BindCheckers.empty()              ||
+         !BeginAnalysisCheckers.empty()     ||
          !EndAnalysisCheckers.empty()       ||
          !EndFunctionCheckers.empty()           ||
          !BranchConditionCheckers.empty()   ||
@@ -46,7 +48,8 @@ bool CheckerManager::hasPathSensitiveCheckers() const {
          !DeadSymbolsCheckers.empty()       ||
          !RegionChangesCheckers.empty()     ||
          !EvalAssumeCheckers.empty()        ||
-         !EvalCallCheckers.empty();
+         !EvalCallCheckers.empty() ||
+         MatchManager != nullptr;
 }
 
 void CheckerManager::finishedCheckerRegistration() {
@@ -402,6 +405,21 @@ void CheckerManager::runCheckersForBind(ExplodedNodeSet &Dst,
                                         const ProgramPoint &PP) {
   CheckBindContext C(BindCheckers, location, val, S, Eng, PP);
   expandGraphWithCheckers(C, Dst, Src);
+}
+
+struct CheckerManager::MatchManagerImpl {
+  MatchManagerImpl(ASTContext &ASTCtx) : PathMatchFinder(ASTCtx) {}
+  path_matchers::GraphMatchFinder PathMatchFinder;
+};
+
+void CheckerManager::runCheckersForBeginAnalysis(ExplodedGraph &G,
+                                                 BugReporter &BR,
+                                                 ExprEngine &Eng) {
+  for (const auto BeginAnalysisChecker : EndAnalysisCheckers)
+    BeginAnalysisChecker(G, BR, Eng);
+
+  if (MatchManager)
+    MatchManager->PathMatchFinder.reset(&Eng);
 }
 
 void CheckerManager::runCheckersForEndAnalysis(ExplodedGraph &G,
@@ -773,6 +791,10 @@ void CheckerManager::_registerForBind(CheckBindFunc checkfn) {
   BindCheckers.push_back(checkfn);
 }
 
+void CheckerManager::_registerForBeginAnalysis(CheckBeginAnalysisFunc checkfn) {
+  BeginAnalysisCheckers.push_back(checkfn);
+}
+
 void CheckerManager::_registerForEndAnalysis(CheckEndAnalysisFunc checkfn) {
   EndAnalysisCheckers.push_back(checkfn);
 }
@@ -848,6 +870,26 @@ CheckerManager::getCachedStmtCheckersFor(const Stmt *S, bool isPreVisit) {
       Checkers.push_back(Info.CheckFn);
   return Checkers;
 }
+
+
+void CheckerManager::notifyAboutNewEdge(const ExplodedNode *Src,
+                                        const ExplodedNode *Dst) {
+  if (MatchManager)
+    MatchManager->PathMatchFinder.advance(Src, Dst);
+}
+
+void CheckerManager::registerPathMatcher(
+    path_matchers::MatcherCallbackPair &&MatchItem, ASTContext &ASTCtx) {
+  if (!MatchManager)
+    MatchManager.reset(new MatchManagerImpl(ASTCtx));
+
+  MatchManager->PathMatchFinder.addMatcher(MatchItem.Matcher,
+                                           MatchItem.Callback);
+}
+
+CheckerManager::CheckerManager(const LangOptions &LangOpts,
+                               AnalyzerOptions &AOptions)
+    : LangOpts(LangOpts), AOptions(AOptions) {}
 
 CheckerManager::~CheckerManager() {
   for (const auto CheckerDtor : CheckerDtors)

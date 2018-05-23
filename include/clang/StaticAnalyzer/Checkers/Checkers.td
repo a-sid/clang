@@ -189,6 +189,10 @@ def TestAfterDivZeroCheckerV2 : Checker<"TestAfterDivZeroV2">,
   HelpText<"Matcher-based check for division by variable that is later compared against 0. Either the comparison is useless or there is division by zero.">,
   DescFile<"TestAfterDivZeroCheckerV2.cpp">;
 
+def TestAfterDivZeroCheckerV3 : Checker<"TestAfterDivZeroV3">,
+  HelpText<"Matcher-based check for division by variable that is later compared against 0. Either the comparison is useless or there is division by zero.">,
+  DescFile<"TestAfterDivZeroCheckerV3.cpp">;
+
 def DynamicTypeChecker : Checker<"DynamicTypeChecker">,
   HelpText<"Check for cases where the dynamic and the static type of an object are unrelated.">,
   DescFile<"DynamicTypeChecker.cpp">;

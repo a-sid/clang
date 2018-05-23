@@ -25,6 +25,7 @@ using namespace internal;
 
 void GraphMatchFinder::advance(const ExplodedNode *Pred,
                                const ExplodedNode *Succ) {
+  assert(CurrentEngine && "Should set current graph before matching!");
   // Advance and remove unmatched items if needed.
   size_t I = 0;
   BoundMap.advance(Pred, Succ);
@@ -39,7 +40,7 @@ void GraphMatchFinder::advance(const ExplodedNode *Pred,
       break;
     case MatchAction::Accept: {
       auto *Callback = PathSensMatchers[Entry.Matcher];
-      Callback->run(Builder.getBoundNodes());
+      Callback->run(*CurrentEngine, Builder.getBoundNodes());
     } // Fall-through
     case MatchAction::RejectSingle:
       Entries.erase(Entries.begin() + I);
@@ -70,7 +71,7 @@ void GraphMatchFinder::advance(const ExplodedNode *Pred,
 
     } else if (Res.isAccept()) {
       auto *Callback = PathSensMatchers[Matcher];
-      Callback->run(Builder.getBoundNodes());
+      Callback->run(*CurrentEngine, Builder.getBoundNodes());
 
     } else if (Res.Action == MatchAction::RejectForever) {
       RejectedMatchers.insert(Matcher);
@@ -78,11 +79,11 @@ void GraphMatchFinder::advance(const ExplodedNode *Pred,
   }
 }
 
-void GraphMatchFinder::match(const ExplodedGraph &G) {
+void GraphMatchFinder::match(ExplodedGraph &G, ExprEngine &Eng) {
+  reset(&Eng);
   // Simple DFS on ExplodedGraph nodes.
   // FIXME: Make the visitor configurable.
-  typedef const ExplodedNode *ENodeRef;
-  typedef std::pair<ENodeRef, ENodeRef> VisitEntry;
+  using ENodeRef = const ExplodedNode *;
   SmallVector<ENodeRef, 256> Stack;
   llvm::DenseSet<ENodeRef> Visited;
   for (ENodeRef Root : G.roots()) {

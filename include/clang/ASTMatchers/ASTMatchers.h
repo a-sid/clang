@@ -75,7 +75,6 @@
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/TypeTraits.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
-#include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -92,6 +91,14 @@
 #include <vector>
 
 namespace clang {
+namespace ento {
+namespace path_matchers {
+namespace internal {
+class GraphBoundNodesTreeBuilder;
+} // namespace internal
+} // namespace path_matchers
+} // namespace ento
+
 namespace ast_matchers {
 
 /// Maps string IDs to AST nodes matched by parts of a matcher.
@@ -124,9 +131,10 @@ public:
 
 private:
   friend class internal::BoundNodesTreeBuilder;
+  friend class clang::ento::path_matchers::internal::GraphBoundNodesTreeBuilder;
 
   /// Create BoundNodes from a pre-filled map of bindings.
-  BoundNodes(internal::BoundNodesMap &MyBoundNodes)
+  BoundNodes(const internal::BoundNodesMap &MyBoundNodes)
       : MyBoundNodes(MyBoundNodes) {}
 
   internal::BoundNodesMap MyBoundNodes;

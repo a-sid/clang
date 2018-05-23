@@ -319,6 +319,10 @@ public:
   ///  nodes by processing the 'effects' of a switch statement.
   void processSwitch(SwitchNodeBuilder& builder) override;
 
+  /// Called by CoreEngine.  Used to notify checker and CheckerManager that
+  /// a new path-sensitive analysis has begun.
+  virtual void processBeginAnalysis() override;
+
   /// Called by CoreEngine.  Used to notify checkers that processing a
   /// function has begun. Called for both inlined and and top-level functions.
   void processBeginOfFunction(NodeBuilderContext &BC,

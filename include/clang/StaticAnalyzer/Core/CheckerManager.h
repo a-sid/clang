@@ -53,6 +53,11 @@ class RegionAndSymbolInvalidationTraits;
 class SVal;
 class SymbolReaper;
 
+namespace path_matchers {
+struct MatcherCallbackPair;
+class GraphMatchFinder;
+} // namespace path_matchers
+
 template <typename T> class CheckerFn;
 
 template <typename RET, typename... Ps>
@@ -120,8 +125,7 @@ class CheckerManager {
   CheckName CurrentCheckName;
 
 public:
-  CheckerManager(const LangOptions &langOpts, AnalyzerOptions &AOptions)
-      : LangOpts(langOpts), AOptions(AOptions) {}
+  CheckerManager(const LangOptions &LangOpts, AnalyzerOptions &AOptions);
 
   ~CheckerManager();
 
@@ -163,9 +167,12 @@ public:
     return checker;
   }
 
-//===----------------------------------------------------------------------===//
-// Functions for running checkers for AST traversing..
-//===----------------------------------------------------------------------===//
+  void registerPathMatcher(path_matchers::MatcherCallbackPair &&MatchItem,
+                           ASTContext &ACtx);
+
+  //===--------------------------------------------------------------------===//
+  // Functions for running checkers for AST traversing..
+  //===--------------------------------------------------------------------===//
 
   /// Run checkers handling Decls.
   void runCheckersOnASTDecl(const Decl *D, AnalysisManager& mgr,
@@ -178,6 +185,11 @@ public:
 //===----------------------------------------------------------------------===//
 // Functions for running checkers for path-sensitive checking.
 //===----------------------------------------------------------------------===//
+
+  /// Run matcher engine while performing on-the-fly matching.
+  /// Path matchers usually check node type themselves so this method
+  /// should be called every time a new ExplodedNode is created.
+  void notifyAboutNewEdge(const ExplodedNode *Src, const ExplodedNode *Dst);
 
   /// Run checkers for pre-visiting Stmts.
   ///
@@ -279,6 +291,10 @@ public:
                           SVal location, SVal val,
                           const Stmt *S, ExprEngine &Eng,
                           const ProgramPoint &PP);
+
+  /// Run checkers for start of analysis.
+  void runCheckersForBeginAnalysis(ExplodedGraph &G, BugReporter &BR,
+                                   ExprEngine &Eng);
 
   /// Run checkers for end of analysis.
   void runCheckersForEndAnalysis(ExplodedGraph &G, BugReporter &BR,
@@ -435,6 +451,8 @@ public:
   using CheckEndAnalysisFunc =
       CheckerFn<void (ExplodedGraph &, BugReporter &, ExprEngine &)>;
 
+  using CheckBeginAnalysisFunc = CheckEndAnalysisFunc;
+
   using CheckBeginFunctionFunc = CheckerFn<void (CheckerContext &)>;
 
   using CheckEndFunctionFunc =
@@ -494,6 +512,7 @@ public:
 
   void _registerForBind(CheckBindFunc checkfn);
 
+  void _registerForBeginAnalysis(CheckBeginAnalysisFunc checkfn);
   void _registerForEndAnalysis(CheckEndAnalysisFunc checkfn);
 
   void _registerForBeginFunction(CheckBeginFunctionFunc checkfn);
@@ -605,6 +624,7 @@ private:
 
   std::vector<CheckBindFunc> BindCheckers;
 
+  std::vector<CheckBeginAnalysisFunc> BeginAnalysisCheckers;
   std::vector<CheckEndAnalysisFunc> EndAnalysisCheckers;
 
   std::vector<CheckBeginFunctionFunc> BeginFunctionCheckers;
@@ -637,6 +657,9 @@ private:
 
   using EventsTy = llvm::DenseMap<EventTag, EventInfo>;
   EventsTy Events;
+
+  struct MatchManagerImpl;
+  std::unique_ptr<MatchManagerImpl> MatchManager;
 };
 
 } // namespace ento

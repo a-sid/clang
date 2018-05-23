@@ -81,6 +81,8 @@ bool CoreEngine::ExecuteWorkList(const LocationContext *L, unsigned Steps,
   if (G.num_roots() == 0) { // Initialize the analysis by constructing
     // the root if none exists.
 
+    SubEng.processBeginAnalysis();
+
     const CFGBlock *Entry = &(L->getCFG()->getEntry());
 
     assert(Entry->empty() && "Entry block must be empty.");

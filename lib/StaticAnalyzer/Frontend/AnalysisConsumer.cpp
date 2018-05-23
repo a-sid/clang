@@ -729,6 +729,18 @@ void AnalysisConsumer::HandleCode(Decl *D, AnalysisMode Mode,
 // Path-sensitive checking.
 //===----------------------------------------------------------------------===//
 
+
+class PathMatcherListener : public ExplodedNode::Auditor {
+  CheckerManager &Mgr;
+
+public:
+  PathMatcherListener(CheckerManager &Mgr) : Mgr(Mgr) {}
+
+  void AddEdge(ExplodedNode *Src, ExplodedNode *Dst) override {
+    Mgr.notifyAboutNewEdge(Src, Dst);
+  }
+};
+
 void AnalysisConsumer::ActionExprEngine(Decl *D, bool ObjCGCEnabled,
                                         ExprEngine::InliningModes IMode,
                                         SetOfConstDecls *VisitedCallees) {
@@ -744,20 +756,23 @@ void AnalysisConsumer::ActionExprEngine(Decl *D, bool ObjCGCEnabled,
   ExprEngine Eng(CTU, *Mgr, ObjCGCEnabled, VisitedCallees, &FunctionSummaries,
                  IMode);
 
+  PathMatcherListener MatcherListener(*checkerMgr);
+  ExplodedNode::addAuditor(&MatcherListener);
+#ifndef NDEBUG
   // Set the graph auditor.
   std::unique_ptr<ExplodedNode::Auditor> Auditor;
   if (Mgr->options.visualizeExplodedGraphWithUbiGraph) {
     Auditor = CreateUbiViz();
-    ExplodedNode::SetAuditor(Auditor.get());
+    ExplodedNode::addAuditor(Auditor.get());
   }
-
+#endif
   // Execute the worklist algorithm.
   Eng.ExecuteWorkList(Mgr->getAnalysisDeclContextManager().getStackFrame(D),
                       Mgr->options.getMaxNodesPerTopLevelFunction());
 
   // Release the auditor (if any) so that it doesn't monitor the graph
   // created BugReporter.
-  ExplodedNode::SetAuditor(nullptr);
+  ExplodedNode::resetAuditors();
 
   // Visualize the exploded graph.
   if (Mgr->options.visualizeExplodedGraphWithGraphViz)
@@ -841,6 +856,8 @@ static std::unique_ptr<ExplodedNode::Auditor> CreateUbiViz() {
 }
 
 void UbigraphViz::AddEdge(ExplodedNode *Src, ExplodedNode *Dst) {
+  if (!Src)
+    return;
 
   assert (Src != Dst && "Self-edges are not allowed.");
 

@@ -42,14 +42,14 @@ using namespace ento;
 // An out of line virtual method to provide a home for the class vtable.
 ExplodedNode::Auditor::~Auditor() = default;
 
-#ifndef NDEBUG
-static ExplodedNode::Auditor* NodeAuditor = nullptr;
-#endif
+static SmallVector<ExplodedNode::Auditor *, 2> NodeAuditors;
 
-void ExplodedNode::SetAuditor(ExplodedNode::Auditor* A) {
-#ifndef NDEBUG
-  NodeAuditor = A;
-#endif
+void ExplodedNode::addAuditor(ExplodedNode::Auditor* A) {
+  NodeAuditors.push_back(A);
+}
+
+void ExplodedNode::resetAuditors() {
+  NodeAuditors.clear();
 }
 
 //===----------------------------------------------------------------------===//
@@ -224,9 +224,8 @@ void ExplodedNode::addPredecessor(ExplodedNode *V, ExplodedGraph &G) {
   assert(!V->isSink());
   Preds.addNode(V, G);
   V->Succs.addNode(this, G);
-#ifndef NDEBUG
-  if (NodeAuditor) NodeAuditor->AddEdge(V, this);
-#endif
+  for (auto *Auditor : NodeAuditors)
+    Auditor->AddEdge(V, this);
 }
 
 void ExplodedNode::NodeGroup::replaceNode(ExplodedNode *node) {
@@ -341,6 +340,12 @@ ExplodedNode *ExplodedGraph::getNode(const ProgramPoint &L,
   return V;
 }
 
+ExplodedNode *ExplodedGraph::addRoot(ExplodedNode *V) {
+  Roots.push_back(V);
+  for (auto *A : NodeAuditors)
+    A->AddEdge(nullptr, V);
+  return V;
+}
 ExplodedNode *ExplodedGraph::createUncachedNode(const ProgramPoint &L,
                                                 ProgramStateRef State,
                                                 bool IsSink) {

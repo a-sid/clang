@@ -11,7 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/StaticAnalyzer/Matchers/GraphMatchFinder.h"
+#include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
+#include "clang/StaticAnalyzer/Matchers/GraphMatchers.h"
 
 using namespace clang;
 using namespace ento;
@@ -36,24 +38,21 @@ void GraphBoundNodesTreeBuilder::addMatches(ArrayRef<BoundNodes> Nodes) {
 
 void GraphBoundNodesTreeBuilder::acceptTemporary(MatcherID NewID) {
   auto &GDM = Bounds.getGDM(CurrentNode);
-  auto TempIter = GDM.find(TemporaryID);
-  if (TempIter != GDM.end()) {
-    GDM[NewID] = TempIter->second;
-    GDM.erase(TempIter);
+  auto *TempIter = GDM.lookup(TemporaryID);
+  if (TempIter) {
+    Bounds.addMatches(CurrentNode, NewID, ast_matchers::BoundNodes(*TempIter));
+    Bounds.resetMatches(CurrentNode, TemporaryID);
   }
 }
 
 DynTypedNode GraphBoundNodesTreeBuilder::getBoundNode(StringRef ID) {
-  auto MatcherNodes = Bounds.getMatches(CurrentNode, CurrentID);
-  if (!MatcherNodes.second)
-    return DynTypedNode();
-  return MatcherNodes.first->second.getNode(ID);
+  auto *MatcherNodes = Bounds.getMatches(CurrentNode, CurrentID);
+  return MatcherNodes ? MatcherNodes->getNode(ID) : DynTypedNode();
 }
 
 astm_internal::BoundNodesMap GraphBoundNodesTreeBuilder::getBoundNodes() {
-  auto MatcherNodes = Bounds.getMatches(CurrentNode, CurrentID);
-  return MatcherNodes.second ? MatcherNodes.first->second
-                             : astm_internal::BoundNodesMap();
+  auto *MatcherNodes = Bounds.getMatches(CurrentNode, CurrentID);
+  return MatcherNodes ? *MatcherNodes : astm_internal::BoundNodesMap();
 }
 
 namespace {
@@ -69,7 +68,6 @@ getASTMatches(const DynTypedNode &DynNode,
               const astm_internal::DynTypedMatcher &Matcher, ASTContext &ACtx,
               GraphBoundNodesTreeBuilder *Builder) {
   MatchFinder NodeFinder;
-  static int t = 0; ++t;
   astm_internal::CollectMatchesCallback CB;
   NodeFinder.addDynamicMatcher(Matcher, &CB);
   std::unique_ptr<EGraphContext> EGContext;
@@ -157,8 +155,11 @@ SequenceVariadicOperator(const DynTypedNode &DynNode, GraphMatchFinder *Finder,
   bool IsLastMatcher = Index == InnerMatchers.size() - 1;
   bool IsNewMatch = StateID == 0;
 
-  if (IsNodeLast && !IsLastMatcher)
-    return {MatchAction::RejectSingle, StateInvalid};
+  if (IsNodeLast && !IsLastMatcher) {
+    // FIXME This should be:
+    // return {MatchAction::RejectSingle, StateInvalid};
+    // but during on-the-fly matching, every new node is the last.
+  }
 
   auto Callback = getASTMatches(DynNode, InnerMatchers[Index],
                                 Finder->getASTContext(), Builder);

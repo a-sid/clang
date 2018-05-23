@@ -259,7 +259,8 @@ public:
     virtual void AddEdge(ExplodedNode *Src, ExplodedNode *Dst) = 0;
   };
 
-  static void SetAuditor(Auditor* A);
+  static void addAuditor(Auditor *A);
+  static void resetAuditors();
 
 private:
   void replaceSuccessor(ExplodedNode *node) { Succs.replaceNode(node); }
@@ -335,10 +336,7 @@ public:
   }
 
   /// addRoot - Add an untyped node to the set of roots.
-  ExplodedNode *addRoot(ExplodedNode *V) {
-    Roots.push_back(V);
-    return V;
-  }
+  ExplodedNode *addRoot(ExplodedNode *V);
 
   /// addEndOfPath - Add an untyped node to the set of EOP nodes.
   ExplodedNode *addEndOfPath(ExplodedNode *V) {
