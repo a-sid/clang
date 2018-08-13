@@ -1299,6 +1299,36 @@ bool ASTNodeImporter::ImportDeclContext(DeclContext *FromDC, bool ForceImport) {
     if (!Importer.Import(From))
       return true;
 
+  // Reorder declarations in RecordDecls because they may have another
+  // order. Keeping field order is vitable because it determines structure
+  // layout.
+  // FIXME: This is an ugly fix. Unfortunately, I cannot come with better
+  // solution for this issue. We cannot defer expression import here because
+  // type import can depend on them.
+  const auto *FromRD = dyn_cast<RecordDecl>(FromDC);
+  if (!FromRD)
+    return false;
+
+  auto ImportedDC = Importer.Import(cast<Decl>(FromDC));
+  assert(ImportedDC);
+  auto *ToRD = cast<RecordDecl>(*ImportedDC);
+
+  for (auto *D : FromRD->decls()) {
+    Decl *ToD = Importer.GetAlreadyImportedOrNull(D);
+    assert(ToRD == ToD->getDeclContext() && ToRD->containsDecl(ToD));
+    ToRD->removeDecl(ToD);
+  }
+
+  assert(ToRD->decls_empty());
+
+  for (auto *D : FromRD->decls()) {
+    Decl *ToD = Importer.GetAlreadyImportedOrNull(D);
+    assert(ToRD == ToD->getDeclContext());
+    assert(ToRD == ToD->getLexicalDeclContext());
+    assert(!ToRD->containsDecl(ToD));
+    ToRD->addDeclInternal(ToD);
+  }
+
   return false;
 }
 
