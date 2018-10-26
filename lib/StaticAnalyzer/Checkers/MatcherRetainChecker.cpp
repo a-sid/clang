@@ -41,7 +41,8 @@ void MatcherRetainChecker::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
   path_matchers::GraphMatchFinder Finder(BR.getContext());
   auto Callback = createProxyCallback(
       [&BR, this](ExprEngine &Eng,
-                  const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
+                  const GraphBoundNodesMap::StoredItemTy &BoundNodes,
+                  GraphMatchFinder *) {
         if (!RetainBug)
           RetainBug.reset(new BuiltinBug(this, "Too many releases"));
 

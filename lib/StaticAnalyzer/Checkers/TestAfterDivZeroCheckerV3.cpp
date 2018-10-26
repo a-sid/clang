@@ -101,7 +101,8 @@ void TestAfterDivZeroCheckerV3::checkASTDecl(const TranslationUnitDecl *TU,
                                              BugReporter &BR) const {
   auto *Callback = allocProxyCallback(
         [this](ExprEngine &Eng,
-               const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
+               const GraphBoundNodesMap::StoredItemTy &BoundNodes,
+               GraphMatchFinder *Finder) {
     if (!DivZeroBug)
       DivZeroBug.reset(new BuiltinBug(this, "Division by zero"));
 
@@ -110,6 +111,9 @@ void TestAfterDivZeroCheckerV3::checkASTDecl(const TranslationUnitDecl *TU,
                        *DivNode =
                            BoundNodes.getNodeAs<ExplodedNode>("div_node");
     assert(CompNode && DivNode);
+    Finder->getNodeBuilder()->generateSink(
+        CompNode->getLocation(), CompNode->getState(),
+        const_cast<ExplodedNode *>(CompNode));
 
     auto R = llvm::make_unique<BugReport>(
         *DivZeroBug,

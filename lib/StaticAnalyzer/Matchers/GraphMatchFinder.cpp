@@ -17,66 +17,126 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/StaticAnalyzer/Matchers/GraphMatchFinder.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
 
 using namespace clang;
 using namespace ento;
 using namespace path_matchers;
 using namespace internal;
 
-void GraphMatchFinder::advance(const ExplodedNode *Pred,
-                               const ExplodedNode *Succ) {
+void GraphMatchFinder::advanceSingleEntry(size_t &Index,
+                                          const ExplodedNode *N) {
+  BindEntry<ExplodedNode> &Entry = Entries[Index];
+  GraphBoundNodesTreeBuilder Builder(BoundMap, Entry.getMatchID(), N);
+  MatchResult MatchRes = Entry.matchNewNode(*N, this, &Builder);
+  switch (MatchRes.Action) {
+  case MatchAction::Advance:
+    Entry.advance(MatchRes.NewStateID);
+    ++Index;
+    break;
+  case MatchAction::Accept: {
+    auto *Callback = PathSensMatchers[Entry.Matcher];
+    Callback->run(*CurrentEngine, Builder.getBoundNodes(), this);
+  } // Fall-through
+  case MatchAction::RejectSingle:
+    Entries.erase(Entries.begin() + Index);
+    break;
+  case MatchAction::Pass:
+  case MatchAction::StartNew:
+    ++Index;
+    // Do nothing.
+    break;
+  case MatchAction::RejectForever:
+    llvm_unreachable(
+        "Existing entries should never receive RejectForever!");
+  default:
+    llvm_unreachable("Non-existing match result!");
+  }
+}
+
+void GraphMatchFinder::tryStartNewMatch(PathSensMatcher *Matcher,
+                                        PathMatchCallback *Callback,
+                                        const ExplodedNode *N) {
+  if (RejectedMatchers.count(Matcher))
+    return;
+
+  auto Builder = GraphBoundNodesTreeBuilder::getTemporary(BoundMap, N);
+  MatchResult Res = Matcher->matches(*N, this, &Builder, 0);
+  if (Res.isStartNew()) {
+    const auto &NewEntry = Entries.addMatch(Matcher, Res.NewStateID);
+    Builder.acceptTemporary(NewEntry.getMatchID());
+
+  } else if (Res.isAccept()) {
+    Callback->run(*CurrentEngine, Builder.getBoundNodes(), this);
+
+  } else if (Res.Action == MatchAction::RejectForever) {
+    RejectedMatchers.insert(Matcher);
+  }
+}
+
+void GraphMatchFinder::runOfflineChecks(const ExplodedNode *Pred,
+                                        const ExplodedNode *Succ) {
   assert(CurrentEngine && "Should set current graph before matching!");
+
+  // Advance and remove unmatched items if needed.
+  BoundMap.advance(Pred, Succ);
+  size_t I = 0;
+  while (I < Entries.size())
+    advanceSingleEntry(I, Succ);
+
+  // Check if a new item (StateID == 0) should be added.
+  for (auto &MatchItem : PathSensMatchers)
+    tryStartNewMatch(MatchItem.first, MatchItem.second, Succ);
+}
+
+void GraphMatchFinder::runOnlineChecks(ExplodedNode *Pred, ExplodedNode *Succ,
+                                       ExplodedNodeSet &Dst) {
+  assert(CurrentEngine && "Should set current graph before matching!");
+
+  ExplodedNodeSet Tmp1, Tmp2;
+  Tmp1.Add(Succ);
+  ExplodedNodeSet *PrevSet = &Tmp1;
+
   // Advance and remove unmatched items if needed.
   size_t I = 0;
-  BoundMap.advance(Pred, Succ);
   while (I < Entries.size()) {
-    BindEntry<ExplodedNode> &Entry = Entries[I];
-    GraphBoundNodesTreeBuilder Builder(BoundMap, Entry.getMatchID(), Succ);
-    MatchResult MatchRes = Entry.matchNewNode(*Succ, this, &Builder);
-    switch (MatchRes.Action) {
-    case MatchAction::Advance:
-      Entry.advance(MatchRes.NewStateID);
-      ++I;
-      break;
-    case MatchAction::Accept: {
-      auto *Callback = PathSensMatchers[Entry.Matcher];
-      Callback->run(*CurrentEngine, Builder.getBoundNodes());
-    } // Fall-through
-    case MatchAction::RejectSingle:
-      Entries.erase(Entries.begin() + I);
-      break;
-    case MatchAction::Pass:
-    case MatchAction::StartNew:
-      ++I;
-      // Do nothing.
-      break;
-    case MatchAction::RejectForever:
-      llvm_unreachable("Existing entries should never receive RejectForever!");
-    default:
-      llvm_unreachable("Non-existing match result!");
+    ExplodedNodeSet *CurrSet = (PrevSet == &Tmp2) ? &Tmp1 : &Tmp2;
+    CurrSet->clear();
+
+    NodeBuilderWithSinks NB(*PrevSet, *CurrSet,
+                            CurrentEngine->getBuilderContext(),
+                            (*PrevSet->begin())->getLocation());
+    setNodeBuilder(&NB);
+
+    for (ExplodedNode *N : *PrevSet)
+      advanceSingleEntry(I, N);
+
+    if (CurrSet->empty()) {
+      resetNodeBuilder();
+      return;
     }
+    PrevSet = CurrSet;
   }
 
   // Check if a new item (StateID == 0) should be added.
   for (auto &MatchItem : PathSensMatchers) {
-    PathSensMatcher *Matcher = MatchItem.first;
-    if (RejectedMatchers.count(Matcher))
-      continue;
+    ExplodedNodeSet *CurrSet = (PrevSet == &Tmp2) ? &Tmp1 : &Tmp2;
+    CurrSet->clear();
 
-    auto Builder = GraphBoundNodesTreeBuilder::getTemporary(BoundMap, Succ);
-    MatchResult Res = Matcher->matches(*Succ, this, &Builder, 0);
-    if (Res.isStartNew()) {
-      const auto &NewEntry = Entries.addMatch(Matcher, Res.NewStateID);
-      Builder.acceptTemporary(NewEntry.getMatchID());
+    NodeBuilderWithSinks NB(*PrevSet, *CurrSet,
+                            CurrentEngine->getBuilderContext(),
+                            (*PrevSet->begin())->getLocation());
+    setNodeBuilder(&NB);
 
-    } else if (Res.isAccept()) {
-      auto *Callback = PathSensMatchers[Matcher];
-      Callback->run(*CurrentEngine, Builder.getBoundNodes());
+    for (const ExplodedNode *N : *PrevSet)
+      tryStartNewMatch(MatchItem.first, MatchItem.second, N);
 
-    } else if (Res.Action == MatchAction::RejectForever) {
-      RejectedMatchers.insert(Matcher);
-    }
+    PrevSet = CurrSet;
   }
+
+  // The analysis is over.
+  Dst = *PrevSet;
+  resetNodeBuilder();
 }
 
 void GraphMatchFinder::match(ExplodedGraph &G, ExprEngine &Eng) {
@@ -87,7 +147,7 @@ void GraphMatchFinder::match(ExplodedGraph &G, ExprEngine &Eng) {
   SmallVector<ENodeRef, 256> Stack;
   llvm::DenseSet<ENodeRef> Visited;
   for (ENodeRef Root : G.roots()) {
-    advance(nullptr, Root);
+    runOfflineChecks(nullptr, Root);
     Stack.push_back(Root);
     Visited.insert(Root);
   }
@@ -96,7 +156,7 @@ void GraphMatchFinder::match(ExplodedGraph &G, ExprEngine &Eng) {
     ENodeRef From = Stack.pop_back_val();
     for (ENodeRef Succ : From->successors()) {
       if (Visited.insert(Succ).second) { // Not visited before
-        advance(From, Succ);
+        runOfflineChecks(From, Succ);
         Stack.push_back(Succ);
       }
     }

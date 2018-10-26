@@ -42,7 +42,8 @@ void ChrootCheckerV2::checkEndAnalysis(ExplodedGraph &G, BugReporter &BR,
   path_matchers::GraphMatchFinder Finder(BR.getContext());
   auto Callback = createProxyCallback(
       [&BR, this](ExprEngine &Eng,
-                  const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
+                  const GraphBoundNodesMap::StoredItemTy &BoundNodes,
+                  GraphMatchFinder *) {
         const ExplodedNode *N = BoundNodes.getNodeAs<ExplodedNode>("bug_node");
         if (!BT_BreakJail)
           BT_BreakJail.reset(new BuiltinBug(

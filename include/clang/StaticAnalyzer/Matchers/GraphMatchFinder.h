@@ -50,6 +50,7 @@ namespace ento {
 
 class BugReporter;
 class ExprEngine;
+class NodeBuilder;
 
 namespace path_matchers {
 
@@ -131,7 +132,8 @@ public:
   class PathMatchCallback {
   public:
     virtual void run(ExprEngine &Eng,
-                     const GraphBoundNodesMap::StoredItemTy &BoundNodes) = 0;
+                     const GraphBoundNodesMap::StoredItemTy &BoundNodes,
+                     GraphMatchFinder *Finder) = 0;
     virtual ~PathMatchCallback() = default;
   };
 
@@ -150,11 +152,19 @@ private:
   };
 
   ASTContext &ASTCtx;
+
+  // FIXME: entries should be bound to nodes because they can be different
+  // for different execution branches. Putting them here was a mistake.
   EntriesTy Entries;
   GraphBoundNodesMap BoundMap;
   std::map<internal::PathSensMatcher *, PathMatchCallback *> PathSensMatchers;
   llvm::SmallPtrSet<internal::PathSensMatcher *, 4> RejectedMatchers;
   ExprEngine *CurrentEngine = nullptr;
+  NodeBuilder *CurrentNodeBuilder = nullptr;
+
+  void advanceSingleEntry(size_t &Index, const ExplodedNode *N);
+  void tryStartNewMatch(internal::PathSensMatcher *Matcher,
+                        PathMatchCallback *Callback, const ExplodedNode *N);
 
 public:
   void match(const Decl *D);
@@ -165,7 +175,14 @@ public:
     PathSensMatchers[Copy] = Callback;
   }
 
-  void advance(const ExplodedNode *Pred, const ExplodedNode *Succ);
+  void runOfflineChecks(const ExplodedNode *Pred, const ExplodedNode *Succ);
+  void runOnlineChecks(ExplodedNode *Pred, ExplodedNode *Succ,
+                       ExplodedNodeSet &Dst);
+  void advanceWithoutChecking(const ExplodedNode *Pred,
+                              const ExplodedNode *Succ) {
+    BoundMap.advance(Pred, Succ);
+  }
+
   ASTContext &getASTContext() { return ASTCtx; }
   GraphMatchFinder(ASTContext &ASTCtx) : ASTCtx(ASTCtx) {}
 
@@ -173,6 +190,10 @@ public:
     BoundMap.reset();
     this->CurrentEngine = CurrentEngine;
   }
+
+  NodeBuilder *getNodeBuilder() { return CurrentNodeBuilder; }
+  void setNodeBuilder(NodeBuilder *Builder) { CurrentNodeBuilder = Builder; }
+  void resetNodeBuilder() { CurrentNodeBuilder = nullptr; }
 };
 
 template <typename CalleeTy>
@@ -182,10 +203,10 @@ class ProxyMatchCallback : public GraphMatchFinder::PathMatchCallback {
 public:
   ProxyMatchCallback(CalleeTy Callee) : Callee(Callee) {}
 
-  virtual void
-  run(ExprEngine &Eng,
-      const GraphBoundNodesMap::StoredItemTy &BoundNodes) override {
-    Callee(Eng, BoundNodes);
+  virtual void run(ExprEngine &Eng,
+                   const GraphBoundNodesMap::StoredItemTy &BoundNodes,
+                   GraphMatchFinder *Finder) override {
+    Callee(Eng, BoundNodes, Finder);
   }
 };
 
