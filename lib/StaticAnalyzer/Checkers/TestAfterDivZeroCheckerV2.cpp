@@ -99,8 +99,9 @@ void TestAfterDivZeroCheckerV2::checkEndAnalysis(ExplodedGraph &G,
                                                  ExprEngine &Eng) const {
   path_matchers::GraphMatchFinder Finder(BR.getContext());
   auto Callback = createProxyCallback(
-        [&BR, this](ExprEngine &Eng,
-                   const GraphBoundNodesMap::StoredItemTy &BoundNodes) {
+        [&BR, this](ExprEngine &,
+                    const GraphBoundNodesMap::StoredItemTy &BoundNodes,
+                    GraphMatchFinder *) {
     if (!DivZeroBug)
       DivZeroBug.reset(new BuiltinBug(this, "Division by zero"));
 
