@@ -654,8 +654,8 @@ public:
     }
   };
 
-  /// \brief Allows the conversion of a \c Matcher<SymExpr> and
-  /// \c Matcher<MemRegion> to a \c Matcher<SVal>.
+  /// \brief Allows the conversion of a \c Matcher<ProgramState> and
+  /// \c Matcher<ProgramPoint> to a \c Matcher<ExplodedNode>.
   template <typename AccessMemberTy>
   class ENodeAccessor : public WrapperMatcherInterface<ento::ExplodedNode> {
   public:
@@ -668,7 +668,6 @@ public:
       return this->InnerMatcher.matches(
             ento::ast_graph_type_traits::DynTypedNode::create(Val), Finder,
             Builder);
-      return false;
     }
   };
 
