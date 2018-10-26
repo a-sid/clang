@@ -335,12 +335,16 @@ class NodeBuilderWithSinks: public NodeBuilder {
 
 protected:
   SmallVector<ExplodedNode*, 2> sinksGenerated;
-  ProgramPoint &Location;
+  const ProgramPoint &Location;
 
 public:
   NodeBuilderWithSinks(ExplodedNode *Pred, ExplodedNodeSet &DstSet,
                        const NodeBuilderContext &Ctx, ProgramPoint &L)
       : NodeBuilder(Pred, DstSet, Ctx), Location(L) {}
+
+  NodeBuilderWithSinks(ExplodedNodeSet &SrcSet, ExplodedNodeSet &DstSet,
+                       const NodeBuilderContext &Ctx, const ProgramPoint &L)
+      : NodeBuilder(SrcSet, DstSet, Ctx), Location(L) {}
 
   ExplodedNode *generateNode(ProgramStateRef State,
                              ExplodedNode *Pred,

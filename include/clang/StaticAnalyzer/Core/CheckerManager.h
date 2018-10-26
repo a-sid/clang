@@ -585,6 +585,10 @@ private:
   template <typename T>
   static void *getTag() { static int tag; return &tag; }
 
+  template <typename CHECK_CTX>
+  void expandGraphWithCheckers(CHECK_CTX checkCtx, ExplodedNodeSet &Dst,
+                               const ExplodedNodeSet &Src);
+
   llvm::DenseMap<CheckerTag, CheckerRef> CheckerTags;
 
   std::vector<CheckerDtor> CheckerDtors;
