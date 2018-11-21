@@ -118,7 +118,9 @@ void CheckerManager::expandGraphWithCheckers(CHECK_CTX checkCtx,
   ExplodedNodeSet MatcherRunResult;
   ExplodedNodeSet MatcherTrigger;
   NodeBuilder B(Src, MatcherTrigger, BldrCtx);
+
   for (ExplodedNode *Pred : Src) {
+    // TODO: Reuse B?
     ExplodedNode *EventTrigger = B.generateNode(
         checkCtx.getProgramPoint().withTag(
             new SimpleProgramPointTag("CheckerManager", "MatchDummy")),
@@ -127,6 +129,9 @@ void CheckerManager::expandGraphWithCheckers(CHECK_CTX checkCtx,
       MatchManager->PathMatchFinder.runOnlineChecks(Pred, EventTrigger,
                                                     MatcherRunResult);
   }
+
+  if (!MatchManager)
+    MatcherRunResult = std::move(MatcherTrigger);
 
   typename CHECK_CTX::CheckersTy::const_iterator
       I = checkCtx.checkers_begin(), E = checkCtx.checkers_end();
