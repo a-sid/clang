@@ -57,7 +57,7 @@ void GraphMatchFinder::advanceSingleEntry(size_t &Index,
 void GraphMatchFinder::tryStartNewMatch(PathSensMatcher *Matcher,
                                         PathMatchCallback *Callback,
                                         const ExplodedNode *N) {
-  if (RejectedMatchers.count(Matcher))
+  if (RejectedMatchers.isRejectedForever(N, Matcher))
     return;
 
   auto Builder = GraphBoundNodesTreeBuilder::getTemporary(BoundMap, N);
@@ -70,7 +70,7 @@ void GraphMatchFinder::tryStartNewMatch(PathSensMatcher *Matcher,
     Callback->run(*CurrentEngine, Builder.getBoundNodes(), this);
 
   } else if (Res.Action == MatchAction::RejectForever) {
-    RejectedMatchers.insert(Matcher);
+    RejectedMatchers.rejectMatcher(N, Matcher);
   }
 }
 
@@ -80,6 +80,8 @@ void GraphMatchFinder::runOfflineChecks(const ExplodedNode *Pred,
 
   // Advance and remove unmatched items if needed.
   BoundMap.advance(Pred, Succ);
+  RejectedMatchers.advance(Pred, Succ);
+
   size_t I = 0;
   while (I < Entries.size())
     advanceSingleEntry(I, Succ);

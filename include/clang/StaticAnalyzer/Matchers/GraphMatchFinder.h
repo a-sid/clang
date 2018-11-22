@@ -151,6 +151,51 @@ private:
     }
   };
 
+  class RejectedMatchersMap {
+    using RejMatchersTy = llvm::ImmutableSet<const internal::PathSensMatcher *>;
+    using RejFactory = RejMatchersTy::Factory;
+    using NodeTy = const ExplodedNode *;
+    using RejMatchersMapTy = std::map<NodeTy, RejMatchersTy>;
+
+    RejFactory Factory;
+    RejMatchersMapTy Map;
+
+    RejMatchersTy getOrCreateEntry(NodeTy Node) {
+      auto Found = Map.find(Node);
+      if (Found != Map.end())
+        return Found->second;
+
+      return Factory.getEmptySet();
+    }
+
+    void insertOrUpdate(NodeTy Node, RejMatchersTy NewSet) {
+      auto Found = Map.insert({Node, NewSet});
+      if (!Found.second)
+        Found.first->second = NewSet;
+    }
+
+  public:
+    bool isRejectedForever(NodeTy Node,
+                           const internal::PathSensMatcher *Matcher) const {
+      auto Found = Map.find(Node);
+      return Found != Map.end() && Found->second.contains(Matcher);
+    }
+
+    void rejectMatcher(NodeTy Node, const internal::PathSensMatcher *Matcher) {
+      auto CurrSet = getOrCreateEntry(Node);
+      auto NewSet = Factory.add(CurrSet, Matcher);
+      insertOrUpdate(Node, NewSet);
+    }
+
+    void advance(NodeTy From, NodeTy To) {
+      auto Set = getOrCreateEntry(From);
+      insertOrUpdate(To, Set);
+    }
+
+    void reset() { Map = {{nullptr, Factory.getEmptySet()}}; }
+  };
+
+
   ASTContext &ASTCtx;
 
   // FIXME: entries should be bound to nodes because they can be different
@@ -158,7 +203,7 @@ private:
   EntriesTy Entries;
   GraphBoundNodesMap BoundMap;
   std::map<internal::PathSensMatcher *, PathMatchCallback *> PathSensMatchers;
-  llvm::SmallPtrSet<internal::PathSensMatcher *, 4> RejectedMatchers;
+  RejectedMatchersMap RejectedMatchers;
   ExprEngine *CurrentEngine = nullptr;
   NodeBuilder *CurrentNodeBuilder = nullptr;
 
@@ -181,6 +226,7 @@ public:
   void advanceWithoutChecking(const ExplodedNode *Pred,
                               const ExplodedNode *Succ) {
     BoundMap.advance(Pred, Succ);
+    RejectedMatchers.advance(Pred, Succ);
   }
 
   ASTContext &getASTContext() { return ASTCtx; }
@@ -188,6 +234,7 @@ public:
 
   void reset(ExprEngine *CurrentEngine = nullptr) {
     BoundMap.reset();
+    RejectedMatchers.reset();
     this->CurrentEngine = CurrentEngine;
   }
 
