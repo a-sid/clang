@@ -119,6 +119,7 @@ void TestAfterDivZeroCheckerV3::checkASTDecl(const TranslationUnitDecl *TU,
         *DivZeroBug,
         "Value being compared against zero has already been used for division",
         CompNode);
+    R->addVisitor(llvm::make_unique<DivisionBRVisitorV2>(DivNode));
     Eng.getBugReporter().emitReport(std::move(R));
   });
 
