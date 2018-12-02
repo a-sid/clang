@@ -37,7 +37,7 @@ void GraphBoundNodesTreeBuilder::addMatches(ArrayRef<BoundNodes> Nodes) {
 }
 
 void GraphBoundNodesTreeBuilder::acceptTemporary(MatcherID NewID) {
-  auto &GDM = Bounds.getGDM(CurrentNode);
+  auto GDM = Bounds.getGDM(CurrentNode);
   auto *TempIter = GDM.lookup(TemporaryID);
   if (TempIter) {
     Bounds.addMatches(CurrentNode, NewID, ast_matchers::BoundNodes(*TempIter));

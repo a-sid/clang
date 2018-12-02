@@ -54,6 +54,78 @@ class NodeBuilder;
 
 namespace path_matchers {
 
+template <typename ImmutableTy> class MapOnImmutableType {
+  template <typename StoredTy> struct ImmutableTraits {};
+
+  template <typename KeyTy, typename ValueTy>
+  struct ImmutableTraits<llvm::ImmutableMap<KeyTy, ValueTy>> {
+    static llvm::ImmutableMap<KeyTy, ValueTy>
+    getEmpty(typename llvm::ImmutableMap<KeyTy, ValueTy>::Factory &F) {
+      return F.getEmptyMap();
+    }
+  };
+
+  template <typename StoredTy>
+  struct ImmutableTraits<llvm::ImmutableSet<StoredTy>> {
+    static llvm::ImmutableSet<StoredTy>
+    getEmpty(typename llvm::ImmutableSet<StoredTy>::Factory &F) {
+      return F.getEmptySet();
+    }
+  };
+
+  using Factory = typename ImmutableTy::Factory;
+  using NodeTy = const ExplodedNode *;
+  using MapTy = std::map<NodeTy, ImmutableTy>;
+
+  Factory F;
+  MapTy Map;
+
+public:
+  ImmutableTy *lookupEntry(NodeTy Node) {
+    auto Found = Map.find(Node);
+    return Found != Map.end() ? &Found->second : nullptr;
+  }
+
+  ImmutableTy getOrCreateEntry(NodeTy Node) {
+    auto *Found = lookupEntry(Node);
+    if (Found)
+      return *Found;
+    return ImmutableTraits<ImmutableTy>::getEmpty(F);
+  }
+
+  void insertOrUpdate(NodeTy Node, ImmutableTy NewStored) {
+    auto Found = Map.insert({Node, NewStored});
+    if (!Found.second)
+      Found.first->second = NewStored;
+  }
+
+  template <typename KeyTy>
+  bool contains(NodeTy Node, const KeyTy &Key) const {
+    auto Found = Map.find(Node);
+    return Found != Map.end() && Found->second.contains(Key);
+  }
+
+  template <typename... Ts> void addEntry(NodeTy Node, Ts &&... KeyValue) {
+    auto CurrSet = getOrCreateEntry(Node);
+    auto NewSet = F.add(CurrSet, std::forward<Ts>(KeyValue)...);
+    insertOrUpdate(Node, NewSet);
+  }
+
+  template <typename KeyTy> void removeEntry(NodeTy Node, const KeyTy &Key) {
+    auto CurrSet = getOrCreateEntry(Node);
+    auto NewSet = F.remove(CurrSet, Key);
+    insertOrUpdate(Node, NewSet);
+  }
+
+  void advance(NodeTy From, NodeTy To) {
+    assert(Map.find(From) != Map.end() &&
+           "Cannot advance from non-existing node");
+    auto Set = getOrCreateEntry(From);
+    Map.insert({To, Set});
+  }
+
+  void reset() { Map = {{nullptr, ImmutableTraits<ImmutableTy>::getEmpty(F)}}; }
+};
 
 // template <typename NodeTy>
 class GraphBoundNodesMap {
@@ -61,46 +133,26 @@ public:
   using NodeTy = const ExplodedNode *;
   using StoredItemTy = ast_matchers::internal::BoundNodesMap;
   using GDMTy = llvm::ImmutableMap<internal::MatcherID, StoredItemTy>;
-  using GDMFactory = GDMTy::Factory;
-  using GraphGDMTy = std::map<const ExplodedNode *, GDMTy>;
 
-  GraphGDMTy::iterator insertOrUpdate(NodeTy Node, GDMTy NewGDM) {
-    auto Found = GraphGDM.insert({Node, NewGDM});
-    if (!Found.second) {
-      Found.first->second = NewGDM;
-    }
-    return Found.first;
+  GraphBoundNodesMap() { Impl.reset(); }
+
+  void advance(NodeTy Pred, NodeTy Succ) { Impl.advance(Pred, Succ); }
+
+  GDMTy getGDM(NodeTy Node) {
+    auto *Found = Impl.lookupEntry(Node);
+    assert(Found && "Requested GDM for non-existing node!");
+    return *Found;
   }
 
-  GraphBoundNodesMap()
-      : Factory(), GraphGDM{{nullptr, Factory.getEmptyMap()}} {}
-
-  void advance(NodeTy Pred, NodeTy Succ) {
-    assert(GraphGDM.find(Pred) != GraphGDM.end() &&
-           "Cannot advance from non-existing node");
-    auto GDM = getGDM(Pred);
-    insertOrUpdate(Succ, GDM);
-  }
-
-  GDMTy &getGDM(NodeTy Node) {
-    auto Found = GraphGDM.find(Node);
-    assert(Found != GraphGDM.end() && "Requested GDM for non-existing node!");
-    return Found->second;
-  }
-
-  const StoredItemTy &getOrCreateMatches(NodeTy Node,
-                                         internal::MatcherID MatchID) {
-    auto GDM = getGDM(Node);
+  StoredItemTy getOrCreateMatches(NodeTy Node, internal::MatcherID MatchID) {
+    auto GDM = Impl.getOrCreateEntry(Node);
     if (auto *Value = GDM.lookup(MatchID))
       return *Value;
-
-    GDM = Factory.add(GDM, MatchID, StoredItemTy());
-    insertOrUpdate(Node, GDM);
-    return *GDM.lookup(MatchID);
+    return StoredItemTy();
   }
 
   const StoredItemTy *getMatches(NodeTy Node, internal::MatcherID MatchID) {
-    auto &GDM = getGDM(Node);
+    auto GDM = getGDM(Node);
     return GDM.lookup(MatchID);
   }
 
@@ -110,21 +162,17 @@ public:
     assert(!Nodes.getMap().empty());
     for (const auto &Item : Nodes.getMap())
       Entry.addNode(Item.first, Item.second);
-    auto NewMap = Factory.add(getGDM(Node), MatchID, Entry);
-    insertOrUpdate(Node, NewMap);
+    Impl.addEntry(Node, MatchID, Entry);
   }
 
   void resetMatches(NodeTy Node, internal::MatcherID MatchID) {
-    auto GDM = getGDM(Node);
-    GDM = Factory.remove(GDM, MatchID);
-    insertOrUpdate(Node, GDM);
+    Impl.removeEntry(Node, MatchID);
   }
 
-  void reset() { GraphGDM = {{nullptr, Factory.getEmptyMap()}}; }
+  void reset() { Impl.reset(); }
 
 private:
-  GDMFactory Factory;
-  GraphGDMTy GraphGDM;
+  MapOnImmutableType<GDMTy> Impl;
 };
 
 class GraphMatchFinder {
@@ -153,48 +201,24 @@ private:
 
   class RejectedMatchersMap {
     using RejMatchersTy = llvm::ImmutableSet<const internal::PathSensMatcher *>;
-    using RejFactory = RejMatchersTy::Factory;
     using NodeTy = const ExplodedNode *;
-    using RejMatchersMapTy = std::map<NodeTy, RejMatchersTy>;
 
-    RejFactory Factory;
-    RejMatchersMapTy Map;
-
-    RejMatchersTy getOrCreateEntry(NodeTy Node) {
-      auto Found = Map.find(Node);
-      if (Found != Map.end())
-        return Found->second;
-
-      return Factory.getEmptySet();
-    }
-
-    void insertOrUpdate(NodeTy Node, RejMatchersTy NewSet) {
-      auto Found = Map.insert({Node, NewSet});
-      if (!Found.second)
-        Found.first->second = NewSet;
-    }
+    MapOnImmutableType<RejMatchersTy> Impl;
 
   public:
     bool isRejectedForever(NodeTy Node,
                            const internal::PathSensMatcher *Matcher) const {
-      auto Found = Map.find(Node);
-      return Found != Map.end() && Found->second.contains(Matcher);
+      return Impl.contains(Node, Matcher);
     }
 
     void rejectMatcher(NodeTy Node, const internal::PathSensMatcher *Matcher) {
-      auto CurrSet = getOrCreateEntry(Node);
-      auto NewSet = Factory.add(CurrSet, Matcher);
-      insertOrUpdate(Node, NewSet);
+      Impl.addEntry(Node, Matcher);
     }
 
-    void advance(NodeTy From, NodeTy To) {
-      auto Set = getOrCreateEntry(From);
-      insertOrUpdate(To, Set);
-    }
+    void advance(NodeTy From, NodeTy To) { Impl.advance(From, To); }
 
-    void reset() { Map = {{nullptr, Factory.getEmptySet()}}; }
+    void reset() { Impl.reset(); }
   };
-
 
   ASTContext &ASTCtx;
 
