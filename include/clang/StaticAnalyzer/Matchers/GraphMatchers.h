@@ -168,59 +168,82 @@ AST_MATCHER_P(StringRegion, refersString, std::string, String) {
   return Node.getStringLiteral()->getString() == String;
 }
 
-inline const Decl *getParentFunction(ASTContext &ASTCtx, const Stmt &S) {
-  using namespace ast_matchers;
-  auto FuncFinder = stmt(hasAncestor(functionDecl().bind("func")));
-  return selectFirst<Decl>("func", match(FuncFinder, S, ASTCtx));
-}
+struct CFGBlockFromFinder {
+  const CFGBlock *BoundBlock;
+  const Stmt *BoundStmt;
+  const CFGBlock *NodeBlock;
+  AnalysisDeclContext *ADC;
 
-inline size_t getCFGBlockIndex(const CFGBlock &Block, const Stmt *S) {
-  size_t Idx = 0;
-  for (const CFGElement &Elem : Block) {
-    if (auto StmtElem = Elem.getAs<CFGStmt>())
-      if (StmtElem->getStmt() == S)
-        return Idx;
-    ++Idx;
+  static Optional<CFGBlockFromFinder>
+  extract(::clang::ast_matchers::internal::ASTMatchFinder *Finder,
+          const std::string &ID, const Stmt *Node) {
+    EGraphContext *Context = Finder->getContext<EGraphContext>();
+    auto Found = Context->getBoundNode(ID);
+    const Stmt *Bound = Found.get<Stmt>();
+    if (!Bound)
+      return None;
+
+    // FIXME: Finder can already have a memoization data for parents, reuse it.
+    ASTContext &ASTCtx = Finder->getASTContext();
+    const Decl *NodeParentFunc = internal::getParentFunction(ASTCtx, Node),
+               *BoundParentFunc = internal::getParentFunction(ASTCtx, Bound);
+    if (NodeParentFunc != BoundParentFunc)
+      return None;
+
+    auto *ADC = Context->getAnalysisDeclContext(NodeParentFunc);
+    if (!ADC)
+      return None;
+
+    CFG *Cfg = ADC->getCFG();
+    if (!Cfg)
+      return None;
+
+    CFGStmtMap *CSMap = ADC->getCFGStmtMap();
+    assert(CSMap && "Can only be null if CFG is nullptr!");
+
+    const CFGBlock *NodeBlock = CSMap->getBlock(Node),
+                   *BoundBlock = CSMap->getBlock(Bound);
+    return CFGBlockFromFinder{BoundBlock, Bound, NodeBlock, ADC};
   }
-  llvm_unreachable("The statement doesn't belong to the block!");
-}
+};
 
 AST_MATCHER_P(Stmt, postDominatesBoundLocal, std::string, ID) {
-  EGraphContext *Context = Finder->getContext<EGraphContext>();
-  auto Found = Context->getBoundNode(ID);
-  const Stmt *Bound = Found.get<Stmt>();
-  if (!Bound)
+  auto ExtractedCFG = CFGBlockFromFinder::extract(Finder, ID, &Node);
+  if (!ExtractedCFG)
     return false;
 
-  // FIXME: Finder can already have a memoization data for parents, reuse it.
-  ASTContext &ASTCtx = Finder->getASTContext();
-  const Decl *NodeParentFunc = getParentFunction(ASTCtx, Node),
-             *BoundParentFunc = getParentFunction(ASTCtx, *Bound);
-  if (NodeParentFunc != BoundParentFunc)
-    return false;
+  const CFGBlock *BoundBlock = ExtractedCFG->BoundBlock,
+                 *NodeBlock = ExtractedCFG->NodeBlock;
+  AnalysisDeclContext *ADC = ExtractedCFG->ADC;
+  const Stmt *Bound = ExtractedCFG->BoundStmt;
 
-  auto *ADC = Context->getAnalysisDeclContext(NodeParentFunc);
-  if (!ADC)
-    return false;
-
-  CFG *Cfg = ADC->getCFG();
-  if (!Cfg)
-    return false;
-
-  CFGStmtMap *CSMap = ADC->getCFGStmtMap();
-  assert(CSMap && "Can only be null if CFG is nullptr!");
-
-  const CFGBlock *NodeBlock = CSMap->getBlock(&Node),
-                 *BoundBlock = CSMap->getBlock(Bound);
   if (NodeBlock == BoundBlock)
-    return getCFGBlockIndex(*NodeBlock, &Node) >
-           getCFGBlockIndex(*NodeBlock, Bound);
+    return internal::getCFGBlockIndex(*NodeBlock, &Node) >=
+           internal::getCFGBlockIndex(*NodeBlock, Bound);
 
-  DominatorTree<true> Dom;
+  DominatorTree</* IsPostDom= */true> Dom;
   Dom.buildDominatorTree(*ADC);
   return Dom.dominates(NodeBlock, BoundBlock);
 }
 
+AST_MATCHER_P(Stmt, isDominatedByBoundLocal, std::string, ID) {
+  auto ExtractedCFG = CFGBlockFromFinder::extract(Finder, ID, &Node);
+  if (!ExtractedCFG)
+    return false;
+
+  const CFGBlock *BoundBlock = ExtractedCFG->BoundBlock,
+                 *NodeBlock = ExtractedCFG->NodeBlock;
+  AnalysisDeclContext *ADC = ExtractedCFG->ADC;
+  const Stmt *Bound = ExtractedCFG->BoundStmt;
+
+  if (NodeBlock == BoundBlock)
+    return internal::getCFGBlockIndex(*NodeBlock, &Node) >=
+           internal::getCFGBlockIndex(*NodeBlock, Bound);
+
+  DominatorTree</* IsPostDom= */false> Dom;
+  Dom.buildDominatorTree(*ADC);
+  return Dom.dominates(BoundBlock, NodeBlock);
+}
 } // end namespace path_matchers
 
 } // namespace ento

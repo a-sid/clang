@@ -376,6 +376,9 @@ public:
   PathMatcher<NodeTy> *Matcher;
 };
 
+const Decl *getParentFunction(ASTContext &ASTCtx, const Stmt *S);
+size_t getCFGBlockIndex(const CFGBlock &Block, const Stmt *S);
+
 } // end namespace internal
 
 } // end namespace path_matchers

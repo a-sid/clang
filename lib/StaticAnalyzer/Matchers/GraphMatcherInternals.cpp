@@ -220,6 +220,22 @@ MatchResult CountingPathMatcher::dynMatches(const DynTypedNode &DynNode,
   return {MatchAction::Pass, StateID};
 }
 
+const Decl *getParentFunction(ASTContext &ASTCtx, const Stmt *S) {
+  auto FuncFinder = stmt(hasAncestor(functionDecl().bind("func")));
+  return selectFirst<Decl>("func", match(FuncFinder, *S, ASTCtx));
+}
+
+size_t getCFGBlockIndex(const CFGBlock &Block, const Stmt *S) {
+  size_t Idx = 0;
+  for (const CFGElement &Elem : Block) {
+    if (auto StmtElem = Elem.getAs<CFGStmt>())
+      if (StmtElem->getStmt() == S)
+        return Idx;
+    ++Idx;
+  }
+  llvm_unreachable("The statement doesn't belong to the block!");
+}
+
 } // end namespace internal
 
 const astm_internal::VariadicAllOfMatcher<ExplodedNode> explodedNode;
