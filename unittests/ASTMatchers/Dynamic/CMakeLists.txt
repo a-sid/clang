@@ -16,5 +16,6 @@ target_link_libraries(DynamicASTMatchersTests
   clangDynamicASTMatchers
   clangFrontend
   clangSerialization
+  clangStaticAnalyzerCore
   clangTooling
   )
