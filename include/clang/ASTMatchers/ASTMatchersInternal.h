@@ -1079,7 +1079,16 @@ struct IsBaseType {
       std::is_same<T, TypeLoc>::value ||
       std::is_same<T, NestedNameSpecifier>::value ||
       std::is_same<T, NestedNameSpecifierLoc>::value ||
-      std::is_same<T, CXXCtorInitializer>::value;
+      std::is_same<T, CXXCtorInitializer>::value ||
+      std::is_same<T, ProgramPoint>::value ||
+      std::is_same<T, CFGElement>::value ||
+      std::is_same<T, CFGBlock>::value ||
+      std::is_same<T, LocationContext>::value ||
+      std::is_same<T, ento::ExplodedNode>::value ||
+      std::is_same<T, ento::SVal>::value ||
+      std::is_same<T, ento::MemRegion>::value ||
+      std::is_same<T, ento::SymExpr>::value ||
+      std::is_same<T, ento::ProgramState>::value;
 };
 template <typename T>
 const bool IsBaseType<T>::value;
