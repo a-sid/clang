@@ -254,6 +254,7 @@ void DynTypedNode::print(llvm::raw_ostream &OS,
   else
   */
     // FIXME:ProgramPoint, etc.
+  else
     OS << "Unable to print values of type " << NodeKind.asStringRef() << "\n";
 }
 
