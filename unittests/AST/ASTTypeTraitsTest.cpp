@@ -125,25 +125,25 @@ TEST(ASTNodeKind, Name) {
 }
 
 TEST(DynTypedNode, DeclSourceRange) {
-  RangeVerifier<DynTypedNode> Verifier;
+  RangeVerifier<ento::ast_graph_type_traits::DynTypedNode> Verifier;
   Verifier.expectRange(1, 1, 1, 11);
   EXPECT_TRUE(Verifier.match("void f() {}", decl()));
 }
 
 TEST(DynTypedNode, StmtSourceRange) {
-  RangeVerifier<DynTypedNode> Verifier;
+  RangeVerifier<ento::ast_graph_type_traits::DynTypedNode> Verifier;
   Verifier.expectRange(1, 10, 1, 11);
   EXPECT_TRUE(Verifier.match("void f() {}", stmt()));
 }
 
 TEST(DynTypedNode, TypeLocSourceRange) {
-  RangeVerifier<DynTypedNode> Verifier;
+  RangeVerifier<ento::ast_graph_type_traits::DynTypedNode> Verifier;
   Verifier.expectRange(1, 1, 1, 8);
   EXPECT_TRUE(Verifier.match("void f() {}", typeLoc(loc(functionType()))));
 }
 
 TEST(DynTypedNode, NNSLocSourceRange) {
-  RangeVerifier<DynTypedNode> Verifier;
+  RangeVerifier<ento::ast_graph_type_traits::DynTypedNode> Verifier;
   Verifier.expectRange(1, 33, 1, 34);
   EXPECT_TRUE(Verifier.match("namespace N { typedef void T; } N::T f() {}",
                              nestedNameSpecifierLoc()));
