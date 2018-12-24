@@ -23,7 +23,6 @@
 #include "llvm/Support/Error.h"
 
 namespace clang {
-class CompilerInstance;
 class ASTContext;
 class ASTImporter;
 class ASTUnit;
@@ -99,7 +98,7 @@ std::string createCrossTUIndexString(const llvm::StringMap<std::string> &Index);
 /// Note that this class also implements caching.
 class CrossTranslationUnitContext {
 public:
-  CrossTranslationUnitContext(CompilerInstance &CI);
+  CrossTranslationUnitContext(ASTContext &ASTCtx);
   ~CrossTranslationUnitContext();
 
   /// This function loads a function definition from an external AST
@@ -163,7 +162,6 @@ private:
   llvm::StringMap<std::string> FunctionFileMap;
   llvm::DenseMap<TranslationUnitDecl *, std::unique_ptr<ASTImporter>>
       ASTUnitImporterMap;
-  CompilerInstance &CI;
   ASTContext &Context;
   std::unique_ptr<ASTImporterLookupTable> LookupTable;
 };
