@@ -21,7 +21,10 @@
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/Analysis/Analyses/Dominators.h"
+#include "clang/Analysis/Analyses/LiveVariables.h"
 #include "clang/Analysis/CFGStmtMap.h"
+#include "clang/CrossTU/CrossTranslationUnit.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 #include "clang/StaticAnalyzer/Matchers/EGraphContext.h"
 #include "clang/StaticAnalyzer/Matchers/GraphMatchFinder.h"
@@ -166,6 +169,66 @@ AST_MATCHER_P(Stmt, hasValue, ast_matchers::internal::Matcher<SVal>, Inner) {
 
 AST_MATCHER_P(StringRegion, refersString, std::string, String) {
   return Node.getStringLiteral()->getString() == String;
+}
+
+AST_MATCHER_P(FunctionDecl, hasPath,
+              path_matchers::internal::PathSensMatcher, PathMatcher) {
+  // Construct the analysis engine. First check if the CFG is valid.
+  // FIXME: Inter-procedural analysis will need to handle invalid CFGs.
+  ASTContext &ASTCtx = Finder->getASTContext();
+
+  AnalyzerOptions AOpts;
+  AOpts.AnalyzeSpecificFunction = Node.getQualifiedNameAsString();
+  AOpts.maxBlockVisitOnPath = 4;
+  AOpts.InlineMaxStackDepth = 5;
+  AOpts.CheckersControlList = {{"core", true}, {"apiModeling", true}};
+  CheckerManager CheckerMgr(ASTCtx.getLangOpts(), AOpts);
+  PathDiagnosticConsumers PDConsumers;
+
+  AnalysisManager AMgr(ASTCtx, ASTCtx.getDiagnostics(), ASTCtx.getLangOpts(),
+                      PDConsumers, CreateRegionStoreManager,
+                      CreateRangeConstraintManager, &CheckerMgr, AOpts);
+
+  AnalysisDeclContext *ADC = AMgr.getAnalysisDeclContext(&Node);
+  if (!ADC)
+    return false;
+
+  CFG *Cfg = ADC->getCFG();
+  if (!Cfg)
+    return false;
+
+  // See if the LiveVariables analysis scales.
+  if (!ADC->getAnalysis<RelaxedLiveVariables>())
+    return false;
+
+  clang::cross_tu::CrossTranslationUnitContext CTU(Finder->getASTContext());
+  SetOfConstDecls VisitedCallees;
+  FunctionSummariesTy FunctionSummaries;
+  ExprEngine Eng(CTU, AMgr, false, &VisitedCallees, &FunctionSummaries,
+                 ExprEngine::Inline_Regular);
+  Eng.ExecuteWorkList(AMgr.getAnalysisDeclContextManager().getStackFrame(&Node),
+                      300000);
+
+  GraphMatchFinder F(ASTCtx);
+  bool HasMatches = false;
+  GraphBoundNodesMap::StoredItemTy Bounds;
+  auto Callback = createProxyCallback(
+      [&Node, &HasMatches, &Bounds](
+          ExprEngine &Eng, const GraphBoundNodesMap::StoredItemTy &BoundNodes,
+          GraphMatchFinder *Finder) {
+        llvm::errs() << Node.getQualifiedNameAsString() << " matches!";
+        HasMatches = true;
+        Bounds = BoundNodes;
+      });
+  F.addMatcher(PathMatcher, &Callback);
+  F.match(Eng.getGraph(), Eng);
+
+  if (HasMatches) {
+    for (const auto &Item : Bounds.getMap())
+      Builder->setBinding(Item.first, Item.second);
+  }
+
+  return HasMatches;
 }
 
 struct CFGBlockFromFinder {

@@ -204,7 +204,7 @@ public:
                    CodeInjector *injector)
       : RecVisitorMode(0), RecVisitorBR(nullptr), Ctx(nullptr),
         PP(CI.getPreprocessor()), OutDir(outdir), Opts(std::move(opts)),
-        Plugins(plugins), Injector(injector), CTU(CI) {
+        Plugins(plugins), Injector(injector), CTU(CI.getASTContext()) {
     DigestAnalyzerOptions();
     if (Opts->PrintStats || Opts->shouldSerializeStats()) {
       AnalyzerTimers = llvm::make_unique<llvm::TimerGroup>(

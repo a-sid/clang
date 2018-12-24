@@ -90,6 +90,7 @@ add_clang_library(clangStaticAnalyzerCheckers
   TestAfterDivZeroChecker.cpp
   TestAfterDivZeroCheckerV2.cpp
   TestAfterDivZeroCheckerV3.cpp
+  TestAfterDivZeroCheckerV4.cpp
   TraversalChecker.cpp
   TrustNonnullChecker.cpp
   UndefBranchChecker.cpp

@@ -111,8 +111,8 @@ createCrossTUIndexString(const llvm::StringMap<std::string> &Index) {
   return Result.str();
 }
 
-CrossTranslationUnitContext::CrossTranslationUnitContext(CompilerInstance &CI)
-    : CI(CI), Context(CI.getASTContext()) {}
+CrossTranslationUnitContext::CrossTranslationUnitContext(ASTContext &ASTCtx)
+    : Context(ASTCtx) {}
 
 CrossTranslationUnitContext::~CrossTranslationUnitContext() {}
 
@@ -228,9 +228,11 @@ llvm::Expected<ASTUnit *> CrossTranslationUnitContext::loadExternalAST(
       IntrusiveRefCntPtr<DiagnosticsEngine> Diags(
           new DiagnosticsEngine(DiagID, &*DiagOpts, DiagClient));
 
+      PCHContainerOperations PCHContainerOps;
       std::unique_ptr<ASTUnit> LoadedUnit(ASTUnit::LoadFromASTFile(
-          ASTFileName, CI.getPCHContainerOperations()->getRawReader(),
-          ASTUnit::LoadEverything, Diags, CI.getFileSystemOpts()));
+          ASTFileName, PCHContainerOps.getRawReader(), ASTUnit::LoadEverything,
+          Diags,
+          Context.getSourceManager().getFileManager().getFileSystemOpts()));
       Unit = LoadedUnit.get();
       FileASTUnitMap[ASTFileName] = std::move(LoadedUnit);
     } else {
