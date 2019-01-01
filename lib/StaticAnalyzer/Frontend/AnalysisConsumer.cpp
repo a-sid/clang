@@ -750,14 +750,6 @@ void AnalysisConsumer::RunPathSensitiveChecks(Decl *D,
 
   PathMatcherListener MatcherListener(*checkerMgr);
   ExplodedNode::addAuditor(&MatcherListener);
-#ifndef NDEBUG
-  // Set the graph auditor.
-  std::unique_ptr<ExplodedNode::Auditor> Auditor;
-  if (Mgr->options.visualizeExplodedGraphWithUbiGraph) {
-    Auditor = CreateUbiViz();
-    ExplodedNode::addAuditor(Auditor.get());
-  }
-#endif
 
   // Execute the worklist algorithm.
   Eng.ExecuteWorkList(Mgr->getAnalysisDeclContextManager().getStackFrame(D),

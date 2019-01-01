@@ -171,6 +171,45 @@ AST_MATCHER_P(StringRegion, refersString, std::string, String) {
   return Node.getStringLiteral()->getString() == String;
 }
 
+// FIXME: Unify this with CompilerInvocation code.
+inline StringRef getStringOption(AnalyzerOptions::ConfigTable &Config,
+                                 StringRef OptionName, StringRef DefaultVal) {
+  return Config.insert({OptionName, DefaultVal}).first->second;
+}
+
+inline void initOption(AnalyzerOptions::ConfigTable &Config,
+                       StringRef &OptionField, StringRef Name,
+                       StringRef DefaultVal) {
+  // String options may be known to invalid (e.g. if the expected string is a
+  // file name, but the file does not exist), those will have to be checked in
+  // parseConfigs.
+  OptionField = getStringOption(Config, Name, DefaultVal);
+}
+
+inline void initOption(AnalyzerOptions::ConfigTable &Config,
+                       bool &OptionField, StringRef Name, bool DefaultVal) {
+  auto PossiblyInvalidVal = llvm::StringSwitch<Optional<bool>>(
+                 getStringOption(Config, Name, (DefaultVal ? "true" : "false")))
+      .Case("true", true)
+      .Case("false", false)
+      .Default(None);
+
+  if (!PossiblyInvalidVal)
+    OptionField = DefaultVal;
+  else
+    OptionField = PossiblyInvalidVal.getValue();
+}
+
+inline void initOption(AnalyzerOptions::ConfigTable &Config,
+                       unsigned &OptionField, StringRef Name,
+                       unsigned DefaultVal) {
+
+  OptionField = DefaultVal;
+  getStringOption(Config, Name, std::to_string(DefaultVal))
+      .getAsInteger(10, OptionField);
+}
+
+
 AST_MATCHER_P(FunctionDecl, hasPath,
               path_matchers::internal::PathSensMatcher, PathMatcher) {
   // Construct the analysis engine. First check if the CFG is valid.
@@ -178,16 +217,34 @@ AST_MATCHER_P(FunctionDecl, hasPath,
   ASTContext &ASTCtx = Finder->getASTContext();
 
   AnalyzerOptions AOpts;
+  AOpts.UserMode = "shallow";
+
+#define ANALYZER_OPTION(TYPE, NAME, CMDFLAG, DESC, DEFAULT_VAL)                \
+  initOption(AOpts.Config, AOpts.NAME, CMDFLAG, DEFAULT_VAL);
+
+#define ANALYZER_OPTION_DEPENDS_ON_USER_MODE(TYPE, NAME, CMDFLAG, DESC,        \
+                                             SHALLOW_VAL, DEEP_VAL)            \
+  switch (AOpts.getUserMode()) {                                               \
+  case UMK_Shallow:                                                            \
+    initOption(AOpts.Config, AOpts.NAME, CMDFLAG, SHALLOW_VAL);         \
+    break;                                                                     \
+  case UMK_Deep:                                                               \
+    initOption(AOpts.Config, AOpts.NAME, CMDFLAG, DEEP_VAL);            \
+    break;                                                                     \
+  }
+
+#include "clang/StaticAnalyzer/Core/AnalyzerOptions.def"
+#undef ANALYZER_OPTION
+#undef ANALYZER_OPTION_DEPENDS_ON_USER_MODE
+
   AOpts.AnalyzeSpecificFunction = Node.getQualifiedNameAsString();
-  AOpts.maxBlockVisitOnPath = 4;
-  AOpts.InlineMaxStackDepth = 5;
   AOpts.CheckersControlList = {{"core", true}, {"apiModeling", true}};
-  CheckerManager CheckerMgr(ASTCtx.getLangOpts(), AOpts);
+  CheckerManager CheckerMgr(ASTCtx, AOpts);
   PathDiagnosticConsumers PDConsumers;
 
-  AnalysisManager AMgr(ASTCtx, ASTCtx.getDiagnostics(), ASTCtx.getLangOpts(),
-                      PDConsumers, CreateRegionStoreManager,
-                      CreateRangeConstraintManager, &CheckerMgr, AOpts);
+  AnalysisManager AMgr(ASTCtx, ASTCtx.getDiagnostics(), PDConsumers,
+                       CreateRegionStoreManager, CreateRangeConstraintManager,
+                       &CheckerMgr, AOpts);
 
   AnalysisDeclContext *ADC = AMgr.getAnalysisDeclContext(&Node);
   if (!ADC)
@@ -204,7 +261,7 @@ AST_MATCHER_P(FunctionDecl, hasPath,
   clang::cross_tu::CrossTranslationUnitContext CTU(Finder->getASTContext());
   SetOfConstDecls VisitedCallees;
   FunctionSummariesTy FunctionSummaries;
-  ExprEngine Eng(CTU, AMgr, false, &VisitedCallees, &FunctionSummaries,
+  ExprEngine Eng(CTU, AMgr, &VisitedCallees, &FunctionSummaries,
                  ExprEngine::Inline_Regular);
   Eng.ExecuteWorkList(AMgr.getAnalysisDeclContextManager().getStackFrame(&Node),
                       300000);

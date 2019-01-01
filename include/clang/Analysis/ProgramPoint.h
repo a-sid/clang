@@ -346,7 +346,7 @@ public:
   explicit FunctionExitPoint(const ReturnStmt *S,
                              const LocationContext *LC,
                              const ProgramPointTag *tag = nullptr)
-      : ProgramPoint(S, FunctionExitKind, LC, tag) {}
+      : ProgramPoint(S, FunctionExitPointKind, LC, tag) {}
 
   const CFGBlock *getBlock() const {
     return &getLocationContext()->getCFG()->getExit();
@@ -360,7 +360,7 @@ private:
   friend class ProgramPoint;
   FunctionExitPoint() = default;
   static bool isKind(const ProgramPoint &Location) {
-    return Location.getKind() == FunctionExitKind;
+    return Location.getKind() == FunctionExitPointKind;
   }
 };
 

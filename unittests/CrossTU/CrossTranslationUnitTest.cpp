@@ -9,6 +9,7 @@
 
 #include "clang/CrossTU/CrossTranslationUnit.h"
 #include "clang/AST/ASTConsumer.h"
+#include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendAction.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/Support/FileSystem.h"
@@ -25,7 +26,7 @@ namespace {
 class CTUASTConsumer : public clang::ASTConsumer {
 public:
   explicit CTUASTConsumer(clang::CompilerInstance &CI, bool *Success)
-      : CTU(CI), Success(Success) {}
+      : CTU(CI.getASTContext()), Success(Success) {}
 
   void HandleTranslationUnit(ASTContext &Ctx) {
     const TranslationUnitDecl *TU = Ctx.getTranslationUnitDecl();

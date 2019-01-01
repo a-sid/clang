@@ -126,12 +126,7 @@ class CheckerManager {
   CheckName CurrentCheckName;
 
 public:
-<<<<<<< HEAD
-  CheckerManager(ASTContext &Context, AnalyzerOptions &AOptions)
-      : Context(Context), LangOpts(Context.getLangOpts()), AOptions(AOptions) {}
-=======
-  CheckerManager(const LangOptions &LangOpts, AnalyzerOptions &AOptions);
->>>>>>> 8b80901ccb... [EGraph Matchers] Implement on-the-fly matching
+  CheckerManager(ASTContext &Context, AnalyzerOptions &AOptions);
 
   ~CheckerManager();
 

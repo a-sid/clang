@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ClangSACheckers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
@@ -43,9 +43,9 @@ public:
     ID.AddPointer(DivisionNode);
   }
 
-  virtual std::shared_ptr<PathDiagnosticPiece>
-  VisitNode(const ExplodedNode *Succ, const ExplodedNode *Pred,
-            BugReporterContext &BRC, BugReport &BR) override {
+  std::shared_ptr<PathDiagnosticPiece> VisitNode(const ExplodedNode *Succ,
+                                                 BugReporterContext &BRC,
+                                                 BugReport &BR) override {
     if (BRC.getNodeResolver().getOriginalNode(Succ) != DivisionNode)
       return nullptr;
 

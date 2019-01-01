@@ -80,8 +80,8 @@ def Containers : Package<"containers">, ParentPackage<CoreFoundation>;
 def LocalizabilityAlpha : Package<"localizability">, ParentPackage<CocoaAlpha>;
 def LocalizabilityOptIn : Package<"localizability">, ParentPackage<CocoaOptIn>;
 
-def TestingAlpha : Package<"test">, InPackage<Alpha>;
-def MPI : Package<"mpi">, InPackage<OptIn>;
+def TestingAlpha : Package<"test">, ParentPackage<Alpha>;
+def MPI : Package<"mpi">, ParentPackage<OptIn>;
 
 def LLVM : Package<"llvm">;
 def LLVMAlpha : Package<"llvm">, ParentPackage<Alpha>;
@@ -197,15 +197,15 @@ def TestAfterDivZeroChecker : Checker<"TestAfterDivZero">,
 
 def TestAfterDivZeroCheckerV2 : Checker<"TestAfterDivZeroV2">,
   HelpText<"Matcher-based check for division by variable that is later compared against 0. Either the comparison is useless or there is division by zero.">,
-  DescFile<"TestAfterDivZeroCheckerV2.cpp">;
+  Documentation<HasAlphaDocumentation>;
 
 def TestAfterDivZeroCheckerV3 : Checker<"TestAfterDivZeroV3">,
   HelpText<"Matcher-based check for division by variable that is later compared against 0. Either the comparison is useless or there is division by zero.">,
-  DescFile<"TestAfterDivZeroCheckerV3.cpp">;
+  Documentation<HasAlphaDocumentation>;
 
 def TestAfterDivZeroCheckerV4 : Checker<"TestAfterDivZeroV4">,
   HelpText<"Matcher-based check for division by variable that is later compared against 0. Either the comparison is useless or there is division by zero.">,
-  DescFile<"TestAfterDivZeroCheckerV4.cpp">;
+  Documentation<HasAlphaDocumentation>;
 
 def DynamicTypeChecker : Checker<"DynamicTypeChecker">,
   HelpText<"Check for cases where the dynamic and the static type of an object "
@@ -555,7 +555,7 @@ def ChrootChecker : Checker<"Chroot">,
 
 def ChrootCheckerV2 : Checker<"ChrootV2">,
   HelpText<"Matcher-based prototype of checker for improper use of chroot">,
-  DescFile<"ChrootCheckerV2.cpp">;
+  Documentation<HasAlphaDocumentation>;
 
 def PthreadLockChecker : Checker<"PthreadLock">,
   HelpText<"Simple lock -> unlock checker">,
@@ -911,7 +911,7 @@ let ParentPackage = TestingAlpha in {
 
 def MatcherRetainChecker : Checker<"MatcherRetain">,
   HelpText<"Matcher-based retain/release counting.">,
-  DescFile<"MatcherRetainChecker.cpp">;
+  Documentation<HasAlphaDocumentation>;
 
 } // end "clone"
 

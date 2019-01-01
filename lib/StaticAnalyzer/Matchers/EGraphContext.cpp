@@ -28,7 +28,7 @@ EGraphContext::getBoundNode(llvm::StringRef ID) {
 }
 
 AnalysisManager &EGraphContext::getAnalysisManager() {
-  return StateMgr.getOwningEngine()->getAnalysisManager();
+  return StateMgr.getOwningEngine().getAnalysisManager();
 }
 
 AnalysisDeclContext *EGraphContext::getAnalysisDeclContext(const Decl *D) {

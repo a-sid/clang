@@ -67,7 +67,7 @@ void ProgramPoint::print(StringRef CR, llvm::raw_ostream &Out) const {
         << castAs<BlockEntrance>().getBlock()->getBlockID();
     break;
 
-  case ProgramPoint::FunctionExitKind: {
+  case ProgramPoint::FunctionExitPointKind: {
     auto FEP = getAs<FunctionExitPoint>();
     Out << "Function Exit: B" << FEP->getBlock()->getBlockID();
     if (const ReturnStmt *RS = FEP->getStmt()) {
@@ -101,7 +101,7 @@ void ProgramPoint::print(StringRef CR, llvm::raw_ostream &Out) const {
     Out << "PreStmtPurgeDeadSymbols";
     break;
 
-  case ProgramPoint::EpsilonKind:
+  case ProgramPoint::EpsilonPointKind:
     Out << "Epsilon Point";
     break;
 
@@ -212,9 +212,9 @@ void ProgramPoint::print(StringRef CR, llvm::raw_ostream &Out) const {
       Out << CR << "PostLValue" << CR;
     else if (getAs<PostAllocatorCall>())
       Out << CR << "PostAllocatorCall" << CR;
-    else if (Loc.getAs<PostCondition>())
+    else if (getAs<PostCondition>())
       Out << "\\lPostCondition\\l";
-    else if (Loc.getAs<PostStmt>())
+    else if (getAs<PostStmt>())
       Out << "\\lPostStmt\\l";
     break;
   }
