@@ -497,9 +497,9 @@ bool Parser::parseMatcherExpressionImpl(const TokenInfo &NameToken,
                            NameToken.Text, NameToken.Range);
   SourceRange MatcherRange = NameToken.Range;
   MatcherRange.End = EndToken.Range.End;
-  VariantMatcher Result = S->actOnMatcherExpression(
-      *Ctor, MatcherRange, BindID, Args, Error);
-  if (Result.isNull()) return false;
+  VariantValue Result =
+      S->actOnMatcherExpression(*Ctor, MatcherRange, BindID, Args, Error);
+  if (!Result.hasValue()) return false;
 
   *Value = Result;
   return true;
@@ -604,7 +604,7 @@ Parser::RegistrySema::lookupMatcherCtor(StringRef MatcherName) {
   return Registry::lookupMatcherCtor(MatcherName);
 }
 
-VariantMatcher Parser::RegistrySema::actOnMatcherExpression(
+VariantValue Parser::RegistrySema::actOnMatcherExpression(
     MatcherCtor Ctor, SourceRange NameRange, StringRef BindID,
     ArrayRef<ParserValue> Args, Diagnostics *Error) {
   if (BindID.empty()) {

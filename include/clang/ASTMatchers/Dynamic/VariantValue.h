@@ -19,6 +19,7 @@
 
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
+#include "clang/StaticAnalyzer/Matchers/GraphMatcherInternals.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/Optional.h"
 #include <memory>
@@ -35,13 +36,14 @@ class ArgKind {
  public:
   enum Kind {
     AK_Matcher,
+    AK_PathMatcher,
     AK_Boolean,
     AK_Double,
     AK_Unsigned,
     AK_String
   };
   /// Constructor for non-matcher types.
-  ArgKind(Kind K) : K(K) { assert(K != AK_Matcher); }
+  ArgKind(Kind K) : K(K) { assert(K > AK_Matcher); }
 
   /// Constructor for matcher types.
   ArgKind(ento::ast_graph_type_traits::ASTGraphNodeKind MatcherKind)
@@ -76,6 +78,7 @@ private:
 };
 
 using ast_matchers::internal::DynTypedMatcher;
+using ento::path_matchers::internal::PathSensMatcher;
 
 /// A variant matcher object.
 ///
@@ -234,6 +237,62 @@ struct VariantMatcher::TypedMatcherOps final : VariantMatcher::MatcherOps {
   }
 };
 
+class VariantPathMatcher {
+  using PathMatcher = ento::path_matchers::internal::PathSensMatcher;
+  /// Constructs a variadic typed path matcher from \p InnerMatchers.
+  /// Will try to convert each inner matcher to the destination type and
+  /// return llvm::None if it fails to do so.
+  llvm::Optional<ento::path_matchers::internal::PathSensMatcher>
+  constructVariadicPathMatcher(ArrayRef<VariantMatcher> InnerMatchers) const;
+
+  /// Payload interface to be specialized by each matcher type.
+  ///
+  /// It follows a similar interface as VariantMatcher itself.
+  class Payload {
+  public:
+    virtual ~Payload();
+    virtual Optional<PathSensMatcher> constructMatcher() const = 0;
+    bool hasMatcher() const { return (bool)constructMatcher(); }
+  };
+
+public:
+  /// A null matcher.
+  VariantPathMatcher();
+
+  /// Clones the provided matcher.
+  static VariantMatcher SingleMatcher(const DynTypedMatcher &Matcher);
+
+  /// Creates a 'variadic' operator matcher.
+  ///
+  /// It will bind to the appropriate type on getTypedMatcher<T>().
+  static VariantPathMatcher VariadicPathMatcher(
+      ento::path_matchers::internal::DynTypedPathMatcher::VariadicOperator Op,
+      std::vector<VariantMatcher> Args);
+
+  /// Makes the matcher the "null" matcher.
+  void reset();
+
+  /// Whether the matcher is null.
+  bool isNull() const {
+    return !Value; }
+
+  /// Return a single matcher, if there is no ambiguity.
+  ///
+  /// \returns the matcher, if there is only one matcher. An empty Optional, if
+  /// the underlying matcher is a polymorphic matcher with more than one
+  /// representation.
+  PathSensMatcher getPathMatcher() const;
+
+private:
+  explicit VariantPathMatcher(std::shared_ptr<Payload> Value)
+      : Value(std::move(Value)) {}
+
+  class SinglePayload;
+  class VariadicPathPayload;
+
+  std::shared_ptr<const Payload> Value;
+};
+
 /// Variant value class.
 ///
 /// Basically, a tagged union with value type semantics.
@@ -262,6 +321,7 @@ public:
   VariantValue(unsigned Unsigned);
   VariantValue(StringRef String);
   VariantValue(const VariantMatcher &Matchers);
+  VariantValue(const VariantPathMatcher &Matcher);
 
   /// Constructs an \c unsigned value (disambiguation from bool).
   VariantValue(int Signed) : VariantValue(static_cast<unsigned>(Signed)) {}
@@ -295,6 +355,11 @@ public:
   const VariantMatcher &getMatcher() const;
   void setMatcher(const VariantMatcher &Matcher);
 
+  /// Path matcher value functions.
+  bool isPathMatcher() const;
+  const VariantPathMatcher &getPathMatcher() const;
+  void setPathMatcher(const VariantPathMatcher &Matcher);
+
   /// Determines if the contained value can be converted to \p Kind.
   ///
   /// \param Kind the requested destination type.
@@ -326,7 +391,8 @@ private:
     VT_Double,
     VT_Unsigned,
     VT_String,
-    VT_Matcher
+    VT_Matcher,
+    VT_PathMatcher
   };
 
   /// All supported value types.
@@ -336,6 +402,7 @@ private:
     bool Boolean;
     std::string *String;
     VariantMatcher *Matcher;
+    VariantPathMatcher *PSMatcher;
   };
 
   ValueType Type;

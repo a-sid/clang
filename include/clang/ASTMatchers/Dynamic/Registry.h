@@ -111,10 +111,9 @@ public:
   ///   A null matcher if the number of arguments or argument types do not match
   ///   the signature.  In that case \c Error will contain the description of
   ///   the error.
-  static VariantMatcher constructMatcher(MatcherCtor Ctor,
-                                         SourceRange NameRange,
-                                         ArrayRef<ParserValue> Args,
-                                         Diagnostics *Error);
+  static VariantValue constructMatcher(MatcherCtor Ctor, SourceRange NameRange,
+                                       ArrayRef<ParserValue> Args,
+                                       Diagnostics *Error);
 
   /// Construct a matcher from the registry and bind it.
   ///
@@ -127,7 +126,12 @@ public:
                                               StringRef BindID,
                                               ArrayRef<ParserValue> Args,
                                               Diagnostics *Error);
+  static VariantPathMatcher constructPathMatcher(MatcherCtor Ctor,
+                                                 SourceRange NameRange,
+                                                 ArrayRef<ParserValue> Args,
+                                                 Diagnostics *Error);
 };
+
 
 } // namespace dynamic
 } // namespace ast_matchers

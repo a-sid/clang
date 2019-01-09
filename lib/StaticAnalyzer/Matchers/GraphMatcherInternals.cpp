@@ -220,6 +220,31 @@ MatchResult CountingPathMatcher::dynMatches(const DynTypedNode &DynNode,
   return {MatchAction::Pass, StateID};
 }
 
+
+DynTypedPathMatcher DynTypedPathMatcher::constructVariadic(
+    DynTypedPathMatcher::VariadicOperator Op,
+    std::vector<astm_internal::DynTypedMatcher> InnerMatchers) {
+  assert(!InnerMatchers.empty() && "Array must not be empty.");
+  ASTGraphNodeKind SupportedKind =
+      ASTGraphNodeKind::getFromNodeKind<ExplodedNode>();
+  assert(llvm::all_of(InnerMatchers,
+                      [SupportedKind](const astm_internal::DynTypedMatcher &M) {
+                        return M.canConvertTo(SupportedKind);
+                      }) &&
+         "InnerMatchers must be convertible to Matchers<ExplodedNode>!");
+
+  switch (Op) {
+  case VariadicOperator::VO_Sequence:
+    return PathSensMatcher(
+        DynTypedPathMatcher(new VariadicPathMatcher<SequenceVariadicOperator>(
+            std::move(InnerMatchers))));
+  }
+  llvm_unreachable("Invalid Op value.");
+}
+
+const DynTypedPathMatcher::VariadicOperator
+    VariadicOperatorKind<SequenceVariadicOperator>::Op;
+
 const Decl *getParentFunction(ASTContext &ASTCtx, const Stmt *S) {
   auto FuncFinder = stmt(hasAncestor(functionDecl().bind("func")));
   return selectFirst<Decl>("func", match(FuncFinder, *S, ASTCtx));

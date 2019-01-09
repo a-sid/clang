@@ -24,6 +24,8 @@ std::string ArgKind::asString() const {
   switch (getArgKind()) {
   case AK_Matcher:
     return (Twine("Matcher<") + MatcherKind.asStringRef() + ">").str();
+  case AK_PathMatcher:
+    return "Path matcher";
   case AK_Boolean:
     return "boolean";
   case AK_Double:
@@ -96,9 +98,12 @@ public:
 
   llvm::Optional<DynTypedMatcher>
   getTypedMatcher(const MatcherOps &Ops) const override {
-    bool Ignore;
-    if (Ops.canConstructFrom(Matcher, Ignore))
-      return Matcher;
+    bool ExactMatch;
+    if (Ops.canConstructFrom(Matcher, ExactMatch)) {
+      if (ExactMatch)
+        return Matcher;
+      return Ops.convertMatcher(Matcher);
+    }
     return llvm::None;
   }
 
@@ -247,6 +252,50 @@ std::string VariantMatcher::getTypeAsString() const {
   return "<Nothing>";
 }
 
+VariantPathMatcher::VariantPathMatcher() {}
+
+VariantPathMatcher::Payload::~Payload() = default;
+
+class VariantPathMatcher::VariadicPathPayload
+    : public VariantPathMatcher::Payload {
+  ento::path_matchers::internal::DynTypedPathMatcher::VariadicOperator Op;
+  std::vector<VariantMatcher> InnerMatchers;
+
+public:
+  VariadicPathPayload(
+      ento::path_matchers::internal::DynTypedPathMatcher::VariadicOperator Op,
+      std::vector<VariantMatcher> InnerMatchers)
+      : Op(Op), InnerMatchers(std::move(InnerMatchers)) {}
+
+  Optional<PathSensMatcher> constructMatcher() const override {
+    std::vector<DynTypedMatcher> DynMatchers;
+    for (const auto &InnerMatcher : InnerMatchers) {
+      // Abort if any of the inner matchers can't be converted to
+      // Matcher<ExplodedNode>.
+      if (!InnerMatcher.hasTypedMatcher<ento::ExplodedNode>())
+        return None;
+      auto Matcher = InnerMatcher.getTypedMatcher<ento::ExplodedNode>();
+      DynMatchers.push_back(Matcher);
+    }
+
+    return PathSensMatcher(
+        ento::path_matchers::internal::DynTypedPathMatcher::constructVariadic(
+            Op, DynMatchers));
+  }
+};
+
+VariantPathMatcher VariantPathMatcher::VariadicPathMatcher(
+    ento::path_matchers::internal::DynTypedPathMatcher::VariadicOperator Op,
+    std::vector<VariantMatcher> Args) {
+  return VariantPathMatcher(
+      std::make_shared<VariadicPathPayload>(Op, std::move(Args)));
+}
+
+PathSensMatcher VariantPathMatcher::getPathMatcher() const {
+  auto Result = Value->constructMatcher();
+  return *Result;
+}
+
 VariantValue::VariantValue(const VariantValue &Other) : Type(VT_Nothing) {
   *this = Other;
 }
@@ -271,6 +320,11 @@ VariantValue::VariantValue(const VariantMatcher &Matcher) : Type(VT_Nothing) {
   setMatcher(Matcher);
 }
 
+VariantValue::VariantValue(const VariantPathMatcher &Matcher)
+    : Type(VT_Nothing) {
+  setPathMatcher(Matcher);
+}
+
 VariantValue::~VariantValue() { reset(); }
 
 VariantValue &VariantValue::operator=(const VariantValue &Other) {
@@ -292,6 +346,9 @@ VariantValue &VariantValue::operator=(const VariantValue &Other) {
   case VT_Matcher:
     setMatcher(Other.getMatcher());
     break;
+  case VT_PathMatcher:
+    setPathMatcher(Other.getPathMatcher());
+    break;
   case VT_Nothing:
     Type = VT_Nothing;
     break;
@@ -306,6 +363,9 @@ void VariantValue::reset() {
     break;
   case VT_Matcher:
     delete Value.Matcher;
+    break;
+  case VT_PathMatcher:
+    delete Value.PSMatcher;
     break;
   // Cases that do nothing.
   case VT_Boolean:
@@ -392,6 +452,21 @@ void VariantValue::setMatcher(const VariantMatcher &NewValue) {
   Value.Matcher = new VariantMatcher(NewValue);
 }
 
+bool VariantValue::isPathMatcher() const {
+  return Type == VT_PathMatcher;
+}
+
+const VariantPathMatcher &VariantValue::getPathMatcher() const {
+  assert(isPathMatcher());
+  return *Value.PSMatcher;
+}
+
+void VariantValue::setPathMatcher(const VariantPathMatcher &Matcher) {
+  reset();
+  Type = VT_PathMatcher;
+  Value.PSMatcher = new VariantPathMatcher(Matcher);
+}
+
 bool VariantValue::isConvertibleTo(ArgKind Kind, unsigned *Specificity) const {
   switch (Kind.getArgKind()) {
   case ArgKind::AK_Boolean:
@@ -422,6 +497,9 @@ bool VariantValue::isConvertibleTo(ArgKind Kind, unsigned *Specificity) const {
     if (!isMatcher())
       return false;
     return getMatcher().isConvertibleTo(Kind.getMatcherKind(), Specificity);
+
+  case ArgKind::AK_PathMatcher:
+    return false;
   }
   llvm_unreachable("Invalid Type");
 }
@@ -445,6 +523,7 @@ std::string VariantValue::getTypeAsString() const {
   switch (Type) {
   case VT_String: return "String";
   case VT_Matcher: return getMatcher().getTypeAsString();
+  case VT_PathMatcher: return "PathMatcher";
   case VT_Boolean: return "Boolean";
   case VT_Double: return "Double";
   case VT_Unsigned: return "Unsigned";

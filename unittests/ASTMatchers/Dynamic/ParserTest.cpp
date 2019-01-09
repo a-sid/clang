@@ -48,11 +48,10 @@ public:
     return reinterpret_cast<MatcherCtor>(Matcher);
   }
 
-  VariantMatcher actOnMatcherExpression(MatcherCtor Ctor,
-                                        SourceRange NameRange,
-                                        StringRef BindID,
-                                        ArrayRef<ParserValue> Args,
-                                        Diagnostics *Error) override {
+  VariantValue actOnMatcherExpression(MatcherCtor Ctor, SourceRange NameRange,
+                                      StringRef BindID,
+                                      ArrayRef<ParserValue> Args,
+                                      Diagnostics *Error) override {
     const ExpectedMatchersTy::value_type *Matcher =
         reinterpret_cast<const ExpectedMatchersTy::value_type *>(Ctor);
     MatcherInfo ToStore = { Matcher->first, NameRange, Args, BindID };

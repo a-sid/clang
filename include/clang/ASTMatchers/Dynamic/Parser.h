@@ -86,11 +86,11 @@ public:
     /// \return The matcher objects constructed by the processor, or a null
     ///   matcher if an error occurred. In that case, \c Error will contain a
     ///   description of the error.
-    virtual VariantMatcher actOnMatcherExpression(MatcherCtor Ctor,
-                                                  SourceRange NameRange,
-                                                  StringRef BindID,
-                                                  ArrayRef<ParserValue> Args,
-                                                  Diagnostics *Error) = 0;
+    virtual VariantValue actOnMatcherExpression(MatcherCtor Ctor,
+                                                SourceRange NameRange,
+                                                StringRef BindID,
+                                                ArrayRef<ParserValue> Args,
+                                                Diagnostics *Error) = 0;
 
     /// Look up a matcher by name.
     ///
@@ -134,11 +134,10 @@ public:
     llvm::Optional<MatcherCtor>
     lookupMatcherCtor(StringRef MatcherName) override;
 
-    VariantMatcher actOnMatcherExpression(MatcherCtor Ctor,
-                                          SourceRange NameRange,
-                                          StringRef BindID,
-                                          ArrayRef<ParserValue> Args,
-                                          Diagnostics *Error) override;
+    VariantValue actOnMatcherExpression(MatcherCtor Ctor, SourceRange NameRange,
+                                        StringRef BindID,
+                                        ArrayRef<ParserValue> Args,
+                                        Diagnostics *Error) override;
 
     std::vector<ArgKind> getAcceptedCompletionTypes(
         llvm::ArrayRef<std::pair<MatcherCtor, unsigned>> Context) override;

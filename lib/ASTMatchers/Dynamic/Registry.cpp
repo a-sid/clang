@@ -18,6 +18,7 @@
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/Dynamic/Diagnostics.h"
 #include "clang/ASTMatchers/Dynamic/VariantValue.h"
+#include "clang/StaticAnalyzer/Matchers/GraphMatchers.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
@@ -89,6 +90,14 @@ void RegistryMaps::registerMatcher(
         MATCHER_OVERLOAD_ENTRY(name, 1)};                                      \
     REGISTER_MATCHER_OVERLOAD(name);                                           \
   } while (false)
+
+#define REGISTER_CSA_MATCHER(name)                                             \
+  registerMatcher(#name, internal::makeMatcherAutoMarshall(                    \
+                             ::clang::ento::path_matchers::name, #name));
+
+#define REGISTER_PATH_MATCHER(name)                                            \
+  registerMatcher(#name, internal::makeMatcherAutoMarshall(                    \
+                             ::clang::ento::path_matchers::name, #name));
 
 /// Generate a registry map with all the known matchers.
 RegistryMaps::RegistryMaps() {
@@ -504,6 +513,18 @@ RegistryMaps::RegistryMaps() {
   REGISTER_MATCHER(voidType);
   REGISTER_MATCHER(whileStmt);
   REGISTER_MATCHER(withInitializer);
+
+  REGISTER_CSA_MATCHER(callEnter);
+  REGISTER_CSA_MATCHER(explodedNode);
+  REGISTER_CSA_MATCHER(hasCallExpr);
+  REGISTER_CSA_MATCHER(hasPath);
+  REGISTER_CSA_MATCHER(hasStatement);
+  REGISTER_CSA_MATCHER(hasValue);
+  REGISTER_CSA_MATCHER(postStmt);
+  REGISTER_CSA_MATCHER(refersString);
+  REGISTER_CSA_MATCHER(stmtPoint);
+  REGISTER_CSA_MATCHER(stringRegion);
+  REGISTER_PATH_MATCHER(hasSequence);
 }
 
 RegistryMaps::~RegistryMaps() = default;
@@ -643,10 +664,11 @@ Registry::getMatcherCompletions(ArrayRef<ArgKind> AcceptedTypes) {
   return Completions;
 }
 
-VariantMatcher Registry::constructMatcher(MatcherCtor Ctor,
-                                          SourceRange NameRange,
-                                          ArrayRef<ParserValue> Args,
-                                          Diagnostics *Error) {
+VariantValue Registry::constructMatcher(MatcherCtor Ctor, SourceRange NameRange,
+                                        ArrayRef<ParserValue> Args,
+                                        Diagnostics *Error) {
+  if (Ctor->isPathMatcher())
+    return Ctor->createPathMatcher(NameRange, Args, Error);
   return Ctor->create(NameRange, Args, Error);
 }
 
@@ -655,7 +677,8 @@ VariantMatcher Registry::constructBoundMatcher(MatcherCtor Ctor,
                                                StringRef BindID,
                                                ArrayRef<ParserValue> Args,
                                                Diagnostics *Error) {
-  VariantMatcher Out = constructMatcher(Ctor, NameRange, Args, Error);
+  VariantMatcher Out =
+      constructMatcher(Ctor, NameRange, Args, Error).getMatcher();
   if (Out.isNull()) return Out;
 
   llvm::Optional<DynTypedMatcher> Result = Out.getSingleMatcher();
@@ -667,6 +690,13 @@ VariantMatcher Registry::constructBoundMatcher(MatcherCtor Ctor,
   }
   Error->addError(NameRange, Error->ET_RegistryNotBindable);
   return VariantMatcher();
+}
+
+VariantPathMatcher Registry::constructPathMatcher(MatcherCtor Ctor,
+                                                  SourceRange NameRange,
+                                                  ArrayRef<ParserValue> Args,
+                                                  Diagnostics *Error) {
+  return Ctor->createPathMatcher(NameRange, Args, Error);
 }
 
 } // namespace dynamic

@@ -84,6 +84,22 @@ template <class T> struct ArgTypeTraits<ast_matchers::internal::Matcher<T>> {
   }
 };
 
+template <>
+struct ArgTypeTraits<ento::path_matchers::internal::PathSensMatcher> {
+  static bool is(const VariantValue &Value) {
+    return Value.isPathMatcher() && !Value.getPathMatcher().isNull();
+  }
+
+  static ento::path_matchers::internal::PathSensMatcher
+  get(const VariantValue &Value) {
+    return Value.getPathMatcher().getPathMatcher();
+  }
+
+  static ArgKind getKind() {
+    return ArgKind(ArgKind::AK_PathMatcher);
+  }
+};
+
 template <> struct ArgTypeTraits<bool> {
   static bool is(const VariantValue &Value) { return Value.isBoolean(); }
 
@@ -177,6 +193,14 @@ public:
   virtual VariantMatcher create(SourceRange NameRange,
                                 ArrayRef<ParserValue> Args,
                                 Diagnostics *Error) const = 0;
+
+  virtual VariantPathMatcher createPathMatcher(SourceRange NameRange,
+                                               ArrayRef<ParserValue> Args,
+                                               Diagnostics *Error) const {
+    return VariantPathMatcher();
+  }
+
+  virtual bool isPathMatcher() const  { return false; }
 
   /// Returns whether the matcher is variadic. Variadic matchers can take any
   /// number of arguments, but they must be of the same type.
@@ -468,6 +492,76 @@ public:
 
 private:
   const ento::ast_graph_type_traits::ASTGraphNodeKind DerivedKind;
+};
+
+/// Variadic operator marshaller function.
+class VariadicPathOperatorMatcherDescriptor : public MatcherDescriptor {
+public:
+  using VarOp =
+      ento::path_matchers::internal::DynTypedPathMatcher::VariadicOperator;
+  VariadicPathOperatorMatcherDescriptor(unsigned MinCount, unsigned MaxCount,
+                                        VarOp Op, StringRef MatcherName)
+      : MinCount(MinCount), MaxCount(MaxCount), Op(Op),
+        MatcherName(MatcherName) {}
+
+  bool isPathMatcher() const override { return true; }
+
+  VariantMatcher create(SourceRange NameRange, ArrayRef<ParserValue> Args,
+                        Diagnostics *Error) const {
+    return VariantMatcher();
+  }
+
+  VariantPathMatcher createPathMatcher(SourceRange NameRange,
+                                       ArrayRef<ParserValue> Args,
+                                       Diagnostics *Error) const override {
+    if (Args.size() < MinCount || MaxCount < Args.size()) {
+      const std::string MaxStr =
+          (MaxCount == std::numeric_limits<unsigned>::max() ? ""
+                                                            : Twine(MaxCount))
+              .str();
+      Error->addError(NameRange, Error->ET_RegistryWrongArgCount)
+          << ("(" + Twine(MinCount) + ", " + MaxStr + ")") << Args.size();
+      return VariantPathMatcher();
+    }
+
+    std::vector<VariantMatcher> InnerArgs;
+    for (size_t i = 0, e = Args.size(); i != e; ++i) {
+      const ParserValue &Arg = Args[i];
+      const VariantValue &Value = Arg.Value;
+      if (!Value.isMatcher()) {
+        Error->addError(Arg.Range, Error->ET_RegistryWrongArgType)
+            << (i + 1) << "Matcher<>" << Value.getTypeAsString();
+        return VariantPathMatcher();
+      }
+      InnerArgs.push_back(Value.getMatcher());
+    }
+    return VariantPathMatcher::VariadicPathMatcher(Op, std::move(InnerArgs));
+  }
+
+  bool isVariadic() const override { return true; }
+  unsigned getNumArgs() const override { return 0; }
+
+  void getArgKinds(ento::ast_graph_type_traits::ASTGraphNodeKind ThisKind, unsigned ArgNo,
+                   std::vector<ArgKind> &Kinds) const override {
+    Kinds.push_back(ThisKind);
+  }
+
+  bool isConvertibleTo(ento::ast_graph_type_traits::ASTGraphNodeKind Kind, unsigned *Specificity,
+                       ento::ast_graph_type_traits::ASTGraphNodeKind *LeastDerivedKind) const override {
+    if (Specificity)
+      *Specificity = 1;
+    if (LeastDerivedKind)
+      *LeastDerivedKind = Kind;
+    return true;
+  }
+
+  bool isPolymorphic() const override { return false; }
+
+private:
+  const unsigned MinCount;
+  const unsigned MaxCount;
+  const VarOp Op;
+  const StringRef MatcherName;
 };
 
 /// Helper macros to check the arguments on all marshaller functions.
@@ -790,6 +884,20 @@ std::unique_ptr<MatcherDescriptor> makeMatcherAutoMarshall(
     StringRef MatcherName) {
   return llvm::make_unique<VariadicOperatorMatcherDescriptor>(
       MinCount, MaxCount, Func.Op, MatcherName);
+}
+
+/// Variadic path operator overload.
+template <ento::path_matchers::internal::PathVariadicOperatorFunction Operator,
+          unsigned MinCount, unsigned MaxCount>
+std::unique_ptr<MatcherDescriptor> makeMatcherAutoMarshall(
+    ento::path_matchers::internal::VariadicOperatorPathMatcherFunc<
+        Operator, MinCount, MaxCount>
+    /* Func */,
+    StringRef MatcherName) {
+  return llvm::make_unique<VariadicPathOperatorMatcherDescriptor>(
+      MinCount, MaxCount,
+      ento::path_matchers::internal::VariadicOperatorKind<Operator>::Op,
+      MatcherName);
 }
 
 } // namespace internal

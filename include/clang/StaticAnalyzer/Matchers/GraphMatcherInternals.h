@@ -155,6 +155,8 @@ public:
       IntrusiveRefCntPtr<DynPathMatcherInterface> Implementation)
       : Implementation(std::move(Implementation)) {}
 
+  enum class VariadicOperator { VO_Sequence };
+
   // FIXME: Support bindings to paths.
   void setAllowBind(bool AB) { AllowBind = AB; }
 
@@ -163,6 +165,10 @@ public:
                       GraphMatchFinder *Finder,
                       GraphBoundNodesTreeBuilder *Builder,
                       MatcherStateID StateID) const;
+
+  static DynTypedPathMatcher constructVariadic(
+      VariadicOperator Op,
+      std::vector<ast_matchers::internal::DynTypedMatcher> InnerMatchers);
 
   /// \brief Bind the specified \p ID to the matcher.
   /// \return A new matcher with the \p ID bound to it if this matcher supports
@@ -314,6 +320,13 @@ MatchResult SequenceVariadicOperator(
     GraphMatchFinder *Finder, GraphBoundNodesTreeBuilder *Builder,
     ArrayRef<ast_matchers::internal::DynTypedMatcher> InnerMatchers,
     MatcherStateID StateID);
+
+template <PathVariadicOperatorFunction Func> struct VariadicOperatorKind {};
+
+template <> struct VariadicOperatorKind<SequenceVariadicOperator> {
+  static constexpr DynTypedPathMatcher::VariadicOperator Op =
+      DynTypedPathMatcher::VariadicOperator::VO_Sequence;
+};
 
 /// \brief Creates a Matcher<T> that matches if all inner matchers match.
 template <typename NodeTy>

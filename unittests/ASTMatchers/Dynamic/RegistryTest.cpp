@@ -46,7 +46,8 @@ public:
     llvm::Optional<MatcherCtor> Ctor = lookupMatcherCtor(MatcherName);
     VariantMatcher Out;
     if (Ctor)
-      Out = Registry::constructMatcher(*Ctor, SourceRange(), Args(), Error);
+      Out = Registry::constructMatcher(*Ctor, SourceRange(), Args(), Error)
+                .getMatcher();
     EXPECT_EQ("", DummyError.toStringFull());
     return Out;
   }
@@ -59,7 +60,8 @@ public:
     llvm::Optional<MatcherCtor> Ctor = lookupMatcherCtor(MatcherName);
     VariantMatcher Out;
     if (Ctor)
-      Out = Registry::constructMatcher(*Ctor, SourceRange(), Args(Arg1), Error);
+      Out = Registry::constructMatcher(*Ctor, SourceRange(), Args(Arg1), Error)
+                .getMatcher();
     EXPECT_EQ("", DummyError.toStringFull()) << MatcherName;
     return Out;
   }
@@ -74,7 +76,8 @@ public:
     VariantMatcher Out;
     if (Ctor)
       Out = Registry::constructMatcher(*Ctor, SourceRange(), Args(Arg1, Arg2),
-                                       Error);
+                                       Error)
+                .getMatcher();
     EXPECT_EQ("", DummyError.toStringFull());
     return Out;
   }
