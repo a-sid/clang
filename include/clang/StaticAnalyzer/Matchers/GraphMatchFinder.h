@@ -188,15 +188,41 @@ public:
 private:
   using EntryTy = internal::BindEntry<ExplodedNode>;
 
-  class EntriesTy : public std::vector<EntryTy> {
-    internal::MatcherID AddCounter = 0;
+  class EntryMap {
+    using NodeTy = const ExplodedNode *;
+    using EntryNodeSetTy = llvm::ImmutableSet<EntryTy>;
+    using EntriesTy = MapOnImmutableType<EntryNodeSetTy>;
+
+    EntriesTy Impl;
+    internal::MatcherID MatchCounter = 0;
 
   public:
-    const EntryTy &addMatch(internal::PathSensMatcher *Matcher,
-                            internal::MatcherStateID StateID) {
-      emplace_back(Matcher, StateID, AddCounter++);
-      return back();
+    void advance(NodeTy From, NodeTy To) {
+      Impl.advance(From, To);
     }
+
+    internal::MatcherID addMatch(NodeTy Node,
+                                 internal::PathSensMatcher *Matcher,
+                                 internal::MatcherStateID StateID) {
+      Impl.addEntry(Node, EntryTy{Matcher, StateID, MatchCounter});
+      return MatchCounter++;
+    }
+
+    EntryNodeSetTy getEntries(NodeTy Node) {
+      return Impl.getOrCreateEntry(Node);
+    }
+
+    void removeEntry(NodeTy Node, const EntryTy &Entry) {
+      Impl.removeEntry(Node, Entry);
+    }
+
+    void replaceEntry(NodeTy Node, const EntryTy &OldEntry,
+                      const EntryTy &NewEntry) {
+      Impl.removeEntry(Node, OldEntry);
+      Impl.addEntry(Node, NewEntry);
+    }
+
+    void reset() { Impl.reset(); }
   };
 
   class RejectedMatchersMap {
@@ -222,16 +248,15 @@ private:
 
   ASTContext &ASTCtx;
 
-  // FIXME: entries should be bound to nodes because they can be different
-  // for different execution branches. Putting them here was a mistake.
-  EntriesTy Entries;
+  EntryMap Entries;
   GraphBoundNodesMap BoundMap;
+  // FIXME: Replace with a DenseMap.
   std::map<internal::PathSensMatcher *, PathMatchCallback *> PathSensMatchers;
   RejectedMatchersMap RejectedMatchers;
   ExprEngine *CurrentEngine = nullptr;
   NodeBuilder *CurrentNodeBuilder = nullptr;
 
-  void advanceSingleEntry(size_t &Index, const ExplodedNode *N);
+  void advanceSingleEntry(const EntryTy &Entry, const ExplodedNode *N);
   void tryStartNewMatch(internal::PathSensMatcher *Matcher,
                         PathMatchCallback *Callback, const ExplodedNode *N);
 
@@ -247,10 +272,12 @@ public:
   void runOfflineChecks(const ExplodedNode *Pred, const ExplodedNode *Succ);
   void runOnlineChecks(ExplodedNode *Pred, ExplodedNode *Succ,
                        ExplodedNodeSet &Dst);
+
   void advanceWithoutChecking(const ExplodedNode *Pred,
                               const ExplodedNode *Succ) {
     BoundMap.advance(Pred, Succ);
     RejectedMatchers.advance(Pred, Succ);
+    Entries.advance(Pred, Succ);
   }
 
   ASTContext &getASTContext() { return ASTCtx; }
@@ -259,6 +286,7 @@ public:
   void reset(ExprEngine *CurrentEngine = nullptr) {
     BoundMap.reset();
     RejectedMatchers.reset();
+    Entries.reset();
     this->CurrentEngine = CurrentEngine;
   }
 

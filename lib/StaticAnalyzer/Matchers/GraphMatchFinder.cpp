@@ -10,9 +10,9 @@
 //  Implements an algorithm to search for matches on AST-based graphs.
 //  Uses memoization to support recursive matches like HasDescendant.
 //
-//  The general idea is to visit all graph nodes with a given visitor (not
-//  implemented yet!). Matcher callback matches() is called on each new node
-//  discovered by the traversal algorithm.
+//  The general idea is to visit all graph nodes with a given visitor.
+//  Matcher callback matches() is called on each new node discovered
+//  by the traversal algorithm.
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,31 +24,31 @@ using namespace ento;
 using namespace path_matchers;
 using namespace internal;
 
-void GraphMatchFinder::advanceSingleEntry(size_t &Index,
+void GraphMatchFinder::advanceSingleEntry(const EntryTy &Entry,
                                           const ExplodedNode *N) {
-  BindEntry<ExplodedNode> &Entry = Entries[Index];
   GraphBoundNodesTreeBuilder Builder(BoundMap, Entry.getMatchID(), N);
   MatchResult MatchRes = Entry.matchNewNode(*N, this, &Builder);
+
   switch (MatchRes.Action) {
-  case MatchAction::Advance:
-    Entry.advance(MatchRes.NewStateID);
-    ++Index;
+  case MatchAction::Advance: {
+    internal::BindEntry<ExplodedNode> NewEntry = Entry;
+    NewEntry.advance(MatchRes.NewStateID);
+    Entries.replaceEntry(N, Entry, std::move(NewEntry));
     break;
+  }
   case MatchAction::Accept: {
     auto *Callback = PathSensMatchers[Entry.Matcher];
     Callback->run(*CurrentEngine, Builder.getBoundNodes(), this);
   } // Fall-through
   case MatchAction::RejectSingle:
-    Entries.erase(Entries.begin() + Index);
+    Entries.removeEntry(N, Entry);
     break;
   case MatchAction::Pass:
   case MatchAction::StartNew:
-    ++Index;
     // Do nothing.
     break;
   case MatchAction::RejectForever:
-    llvm_unreachable(
-        "Existing entries should never receive RejectForever!");
+    llvm_unreachable("Existing entries should never receive RejectForever!");
   default:
     llvm_unreachable("Non-existing match result!");
   }
@@ -63,8 +63,8 @@ void GraphMatchFinder::tryStartNewMatch(PathSensMatcher *Matcher,
   auto Builder = GraphBoundNodesTreeBuilder::getTemporary(BoundMap, N);
   MatchResult Res = Matcher->matches(*N, this, &Builder, 0);
   if (Res.isStartNew()) {
-    const auto &NewEntry = Entries.addMatch(Matcher, Res.NewStateID);
-    Builder.acceptTemporary(NewEntry.getMatchID());
+    MatcherID NewID = Entries.addMatch(N, Matcher, Res.NewStateID);
+    Builder.acceptTemporary(NewID);
 
   } else if (Res.isAccept()) {
     Callback->run(*CurrentEngine, Builder.getBoundNodes(), this);
@@ -79,12 +79,10 @@ void GraphMatchFinder::runOfflineChecks(const ExplodedNode *Pred,
   assert(CurrentEngine && "Should set current graph before matching!");
 
   // Advance and remove unmatched items if needed.
-  BoundMap.advance(Pred, Succ);
-  RejectedMatchers.advance(Pred, Succ);
-
-  size_t I = 0;
-  while (I < Entries.size())
-    advanceSingleEntry(I, Succ);
+  advanceWithoutChecking(Pred, Succ);
+  auto NodeEntries = Entries.getEntries(Succ);
+  for (const auto &Entry : NodeEntries)
+    advanceSingleEntry(Entry, Succ);
 
   // Check if a new item (StateID == 0) should be added.
   for (auto &MatchItem : PathSensMatchers)
@@ -100,8 +98,8 @@ void GraphMatchFinder::runOnlineChecks(ExplodedNode *Pred, ExplodedNode *Succ,
   ExplodedNodeSet *PrevSet = &Tmp1;
 
   // Advance and remove unmatched items if needed.
-  size_t I = 0;
-  while (I < Entries.size()) {
+  auto NodeEntries = Entries.getEntries(Succ);
+  for (const auto &Entry : NodeEntries) {
     ExplodedNodeSet *CurrSet = (PrevSet == &Tmp2) ? &Tmp1 : &Tmp2;
     CurrSet->clear();
 
@@ -111,7 +109,7 @@ void GraphMatchFinder::runOnlineChecks(ExplodedNode *Pred, ExplodedNode *Succ,
     setNodeBuilder(&NB);
 
     for (ExplodedNode *N : *PrevSet)
-      advanceSingleEntry(I, N);
+      advanceSingleEntry(Entry, N);
 
     if (CurrSet->empty()) {
       resetNodeBuilder();

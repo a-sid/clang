@@ -373,6 +373,26 @@ public:
             MatcherID MatchID)
       : StateID(InitialID), MatchID(MatchID), Matcher(Matcher) {}
 
+  bool operator==(const BindEntry &RHS) const {
+    return StateID == RHS.StateID && MatchID == RHS.MatchID &&
+           Matcher == RHS.Matcher;
+  }
+
+  bool operator<(const BindEntry &RHS) const {
+    return MatchID < RHS.MatchID;
+    if (StateID < RHS.StateID)
+      return true;
+
+    if (StateID == RHS.StateID) {
+      if (MatchID < RHS.MatchID)
+        return true;
+      if (MatchID == RHS.MatchID && Matcher < RHS.Matcher)
+        return true;
+    }
+
+    return false;
+  }
+
   MatcherStateID getStateID() const { return StateID; }
   MatcherID getMatchID() const { return MatchID; }
 
@@ -382,8 +402,14 @@ public:
   void setStateID(MatcherStateID StateID) { this->StateID = StateID; }
 
   MatchResult matchNewNode(const NodeTy &Node, GraphMatchFinder *Finder,
-                           GraphBoundNodesTreeBuilder *Builder) {
+                           GraphBoundNodesTreeBuilder *Builder) const {
     return Matcher->matches(Node, Finder, Builder, StateID);
+  }
+
+  void Profile(llvm::FoldingSetNodeID &ID) const {
+    ID.AddInteger(StateID);
+    ID.AddInteger(MatchID);
+    ID.AddPointer(Matcher);
   }
 
   PathMatcher<NodeTy> *Matcher;
